@@ -5,6 +5,8 @@ export function SchoolRegistry() {
   const [activeTab, setActiveTab] = useState('staff');
   const [users, setUsers] = useState<any[]>([]);
   const [learners, setLearners] = useState<any[]>([]);
+  const [grades, setGrades] = useState<any[]>([]);
+  const [streams, setStreams] = useState<any[]>([]);
   
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ role: 'teacher', fullName: '', email: '', phone: '' });
@@ -16,13 +18,17 @@ export function SchoolRegistry() {
 
   const fetchData = async () => {
     const token = localStorage.getItem('token');
-    const [usersRes, learnersRes] = await Promise.all([
+    const [usersRes, learnersRes, gradesRes, streamsRes] = await Promise.all([
       fetch('/api/school/users', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/school/learners', { headers: { Authorization: `Bearer ${token}` } })
+      fetch('/api/school/learners', { headers: { Authorization: `Bearer ${token}` } }),
+      fetch('/api/school/grades', { headers: { Authorization: `Bearer ${token}` } }),
+      fetch('/api/school/streams', { headers: { Authorization: `Bearer ${token}` } })
     ]);
     
     if (usersRes.ok) setUsers(await usersRes.json());
     if (learnersRes.ok) setLearners(await learnersRes.json());
+    if (gradesRes.ok) setGrades(await gradesRes.json());
+    if (streamsRes.ok) setStreams(await streamsRes.json());
   };
 
   useEffect(() => {
@@ -310,11 +316,21 @@ export function SchoolRegistry() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Grade</label>
-                      <input type="text" required value={newLearner.grade} onChange={e => setNewLearner({...newLearner, grade: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="e.g. Grade 1" />
+                      <select required value={newLearner.grade} onChange={e => setNewLearner({...newLearner, grade: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">Select Grade</option>
+                        {grades.map(g => (
+                          <option key={g.id} value={g.name}>{g.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Stream</label>
-                      <input type="text" required value={newLearner.stream} onChange={e => setNewLearner({...newLearner, stream: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="e.g. North" />
+                      <select required value={newLearner.stream} onChange={e => setNewLearner({...newLearner, stream: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="">Select Stream</option>
+                        {streams.map(s => (
+                          <option key={s.id} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
