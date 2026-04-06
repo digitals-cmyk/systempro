@@ -140,7 +140,7 @@ export function Login() {
       
       <div className="mt-auto py-8 text-center text-sm text-gray-500">
         <p>Software License Expiry: Dec 31, 2026</p>
-        <p className="mt-1">© 2026 Pro School Systems. All rights reserved.</p>
+        <p className="mt-1">© 2026 School Management System. All rights reserved.</p>
       </div>
     </div>
   );

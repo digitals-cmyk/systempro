@@ -57,7 +57,7 @@ export function Layout({ children, allowedRoles }: { children: React.ReactNode, 
         <div className="h-16 flex items-center px-6 border-b border-slate-800">
           <School className="h-6 w-6 text-blue-400 mr-3" />
           <span className="font-bold text-lg truncate">
-            {user.role === 'super_admin' ? 'Pro System' : user.school?.name || 'School Portal'}
+            {user.role === 'super_admin' ? 'School Management' : user.school?.name || 'School Portal'}
           </span>
         </div>
         
