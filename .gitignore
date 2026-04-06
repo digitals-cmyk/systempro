@@ -6,9 +6,11 @@ coverage/
 *.log
 .env*
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:true
- jobs:
-build:
+!.env.example
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
     runs-on: ubuntu-latest
     # ... rest of the file
-!.env.example
