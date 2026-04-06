@@ -1,0 +1,11 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [ "main" ]
+# ADD THESE TWO LINES RIGHT HERE:
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+# The rest of your file will continue below...
+jobs:
+  build:
+    runs-on: ubuntu-latest
