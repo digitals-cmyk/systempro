@@ -1,7 +1,6 @@
 name: pro school management system
 on:
-  push:
-    branches: [ "main" ]
+  push: branches: [ "main" ]
 # ADD THESE TWO LINES:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
