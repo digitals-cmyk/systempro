@@ -1,0 +1,14 @@
+on:
+  push:
+    branches: [ "main" ]
+
+# Add this env block to force Node.js 24 for all jobs
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ... rest of your steps
