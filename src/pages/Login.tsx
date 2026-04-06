@@ -51,7 +51,7 @@ export function Login() {
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          School Management System
+          Pro School Management System
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           Multi-School SaaS Platform
@@ -140,7 +140,7 @@ export function Login() {
       
       <div className="mt-auto py-8 text-center text-sm text-gray-500">
         <p>Software License Expiry: Dec 31, 2026</p>
-        <p className="mt-1">© 2026 School Management System. All rights reserved.</p>
+        <p className="mt-1">© 2026 Pro School Management System. All rights reserved.</p>
       </div>
     </div>
   );
