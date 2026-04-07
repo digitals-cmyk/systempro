@@ -39,13 +39,26 @@ export const signInWithEmailAndPassword = async (authObj: any, email: string, pa
     return { user };
   }
   
-  const users = JSON.parse(localStorage.getItem('users') || '[]');
-  const user = users.find((u: any) => u.email === email && u.password === password);
-  if (user) {
-    localStorage.setItem('authUser', JSON.stringify(user));
-    auth.currentUser = user;
-    setTimeout(() => authListeners.forEach(l => l(user)), 0);
-    return { user };
+  const authUsers = JSON.parse(localStorage.getItem('authUsers') || '[]');
+  const authUser = authUsers.find((u: any) => u.email === email && u.password === password);
+  
+  if (authUser) {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const userIndex = users.findIndex((u: any) => u.uid === authUser.uid);
+    let userDoc = null;
+    
+    if (userIndex >= 0) {
+      users[userIndex].lastLogin = new Date().toISOString();
+      localStorage.setItem('users', JSON.stringify(users));
+      userDoc = users[userIndex];
+    }
+    
+    const userToStore = userDoc ? { ...authUser, ...userDoc } : authUser;
+    
+    localStorage.setItem('authUser', JSON.stringify(userToStore));
+    auth.currentUser = userToStore;
+    setTimeout(() => authListeners.forEach(l => l(userToStore)), 0);
+    return { user: userToStore };
   }
   
   const error: any = new Error("Invalid credentials");
@@ -56,6 +69,10 @@ export const signInWithEmailAndPassword = async (authObj: any, email: string, pa
 export const createUserWithEmailAndPassword = async (authObj: any, email: string, password: string) => {
   const uid = Math.random().toString(36).substring(2, 15);
   const user = { uid, email, password };
+  
+  const authUsers = JSON.parse(localStorage.getItem('authUsers') || '[]');
+  authUsers.push(user);
+  localStorage.setItem('authUsers', JSON.stringify(authUsers));
   
   // If it's the main auth instance (not secondary), log them in
   if (authObj === auth) {

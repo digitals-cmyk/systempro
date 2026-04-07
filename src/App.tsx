@@ -7,6 +7,7 @@ import { SuperAdminSettings } from './pages/SuperAdminSettings';
 import { SchoolAdminDashboard } from './pages/SchoolAdminDashboard';
 import { SchoolRegistry } from './pages/SchoolRegistry';
 import Academics from './pages/Academics';
+import Attendance from './pages/Attendance';
 import Exams from './pages/Exams';
 import Timetable from './pages/Timetable';
 import ELearning from './pages/ELearning';
@@ -57,6 +58,7 @@ function App() {
           } />
 
           <Route path="/school/academics" element={<Layout allowedRoles={['school_admin', 'teacher']}><Academics /></Layout>} />
+          <Route path="/school/attendance" element={<Layout allowedRoles={['school_admin', 'teacher']}><Attendance /></Layout>} />
           <Route path="/school/exams" element={<Layout allowedRoles={['school_admin', 'teacher']}><Exams /></Layout>} />
           <Route path="/school/timetable" element={<Layout allowedRoles={['school_admin', 'teacher', 'student']}><Timetable /></Layout>} />
           <Route path="/school/elearning" element={<Layout allowedRoles={['school_admin', 'teacher', 'student']}><ELearning /></Layout>} />

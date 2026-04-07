@@ -6,6 +6,7 @@ import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SuperAdminSchools() {
   const [schools, setSchools] = useState<any[]>([]);
+  const [schoolAdmins, setSchoolAdmins] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSchool, setEditingSchool] = useState<any>(null);
   const [newSchool, setNewSchool] = useState({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
@@ -17,6 +18,13 @@ export function SuperAdminSchools() {
       const querySnapshot = await getDocs(collection(db, 'schools'));
       const schoolsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSchools(schoolsData);
+      
+      // Fetch school admins to show last login
+      const adminsSnapshot = await getDocs(collection(db, 'users'));
+      const adminsData = adminsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((u: any) => u.role === 'school_admin');
+      setSchoolAdmins(adminsData);
     } catch (error) {
       console.error("Error fetching schools:", error);
     }
@@ -123,11 +131,14 @@ export function SuperAdminSchools() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Code</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Principal</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Last Login</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {schools.map((school) => (
+              {schools.map((school) => {
+                const admin = schoolAdmins.find(a => a.schoolId === school.id);
+                return (
                 <tr key={school.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{school.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.code}</td>
@@ -136,6 +147,9 @@ export function SuperAdminSchools() {
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${school.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                       {school.status}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                    {admin?.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onClick={() => openEditSchool(school)} className="text-blue-600 hover:text-blue-900 mr-3">
@@ -146,10 +160,10 @@ export function SuperAdminSchools() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )})}
               {schools.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-sm text-slate-500">No schools registered yet.</td>
+                  <td colSpan={6} className="px-6 py-4 text-center text-sm text-slate-500">No schools registered yet.</td>
                 </tr>
               )}
             </tbody>
