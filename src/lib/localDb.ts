@@ -29,7 +29,12 @@ export const getDocs = async (queryObj: any) => {
     docs: data.map((d: any) => ({
       id: d.id,
       data: () => d
-    }))
+    })),
+    forEach: function(callback: any) {
+      this.docs.forEach(callback);
+    },
+    empty: data.length === 0,
+    size: data.length
   };
 };
 
@@ -109,6 +114,7 @@ export const getDoc = async (docRef: any) => {
   const doc = docs.find((d: any) => d.id === docRef.id);
   return {
     exists: () => !!doc,
-    data: () => doc
+    data: () => doc,
+    id: docRef.id
   };
 };

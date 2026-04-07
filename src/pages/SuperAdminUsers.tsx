@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Edit2, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { Users, Plus, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SuperAdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [newUser, setNewUser] = useState({ username: '', fullName: '', email: '', role: 'super_admin' });
+  const [createdCredentials, setCreatedCredentials] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const fetchUsers = async () => {
     try {
@@ -26,6 +29,7 @@ export function SuperAdminUsers() {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
       if (editingUser) {
@@ -40,18 +44,29 @@ export function SuperAdminUsers() {
         fetchUsers();
         setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       } else {
-        await addDoc(collection(db, 'users'), {
-          ...newUser,
+        // Create user in Auth
+        const { uid, password } = await createAuthUser(newUser.email);
+
+        // Save user to Firestore
+        await setDoc(doc(db, 'users', uid), {
+          uid: uid,
+          username: newUser.username,
+          fullName: newUser.fullName,
+          email: newUser.email,
+          role: 'super_admin',
           status: 'active',
           createdAt: new Date().toISOString()
         });
-        setShowAddModal(false);
+        
+        setCreatedCredentials({ email: newUser.email, password });
         fetchUsers();
         setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving user:", error);
-      alert("Failed to save user");
+      alert(`Failed to save user: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -136,36 +151,61 @@ export function SuperAdminUsers() {
             <div className="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity" onClick={() => setShowAddModal(false)}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
             <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
-              <form onSubmit={handleSaveUser}>
+              {createdCredentials ? (
                 <div>
-                  <h3 className="text-lg leading-6 font-medium text-slate-900 mb-4">{editingUser ? 'Edit User' : 'Add New User'}</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">Username</label>
-                      <input type="text" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">Full Name</label>
-                      <input type="text" required value={newUser.fullName} onChange={e => setNewUser({...newUser, fullName: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">Email</label>
-                      <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
-                    </div>
-                    <div className="text-sm text-slate-500 mt-2">
-                      Note: The user will need to sign in with Google using this email address.
+                  <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-5">
+                    <h3 className="text-lg leading-6 font-medium text-slate-900">User Created Successfully</h3>
+                    <div className="mt-4 bg-slate-50 p-4 rounded-md border border-slate-200 text-left">
+                      <p className="text-sm text-slate-600 mb-2">The super admin account has been created. Please securely share these credentials with the user.</p>
+                      <p className="text-sm font-medium text-slate-900 mt-2">Email: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.email}</span></p>
+                      <p className="text-sm font-medium text-slate-900 mt-2">Password: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.password}</span></p>
                     </div>
                   </div>
+                  <div className="mt-5 sm:mt-6">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:text-sm"
+                      onClick={() => {
+                        setCreatedCredentials(null);
+                        setShowAddModal(false);
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
-                  <button type="submit" className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
-                    {editingUser ? 'Save Changes' : 'Create User'}
-                  </button>
-                  <button type="button" onClick={() => setShowAddModal(false)} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
-                    Cancel
-                  </button>
-                </div>
-              </form>
+              ) : (
+                <form onSubmit={handleSaveUser}>
+                  <div>
+                    <h3 className="text-lg leading-6 font-medium text-slate-900 mb-4">{editingUser ? 'Edit User' : 'Add New User'}</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Username</label>
+                        <input type="text" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Full Name</label>
+                        <input type="text" required value={newUser.fullName} onChange={e => setNewUser({...newUser, fullName: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700">Email</label>
+                        <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
+                    <button type="submit" disabled={loading} className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50">
+                      {loading ? 'Processing...' : (editingUser ? 'Save Changes' : 'Create User')}
+                    </button>
+                    <button type="button" onClick={() => setShowAddModal(false)} disabled={loading} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
