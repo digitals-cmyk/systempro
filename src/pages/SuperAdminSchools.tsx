@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Plus, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SuperAdminSchools() {
   const [schools, setSchools] = useState<any[]>([]);
@@ -9,6 +10,7 @@ export function SuperAdminSchools() {
   const [editingSchool, setEditingSchool] = useState<any>(null);
   const [newSchool, setNewSchool] = useState({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
   const [createdCredentials, setCreatedCredentials] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const fetchSchools = async () => {
     try {
@@ -26,6 +28,7 @@ export function SuperAdminSchools() {
 
   const handleSaveSchool = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
       if (editingSchool) {
@@ -41,19 +44,33 @@ export function SuperAdminSchools() {
           createdAt: new Date().toISOString()
         });
 
-        // Auto-generate school admin credentials to show to the user
-        // Note: In a real app, we'd use Cloud Functions to create the Auth user securely.
-        // For this demo, we'll just show the credentials they *should* create or send an invite.
-        const adminUsername = `admin@${newSchool.code.toLowerCase()}`;
-        const adminPassword = Math.random().toString(36).slice(-8);
+        // Auto-generate school admin credentials
+        const adminUsername = `admin@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
+        
+        // Create user in Firebase Auth using secondary app
+        const { uid, password } = await createAuthUser(adminUsername);
 
-        setCreatedCredentials({ adminUsername, adminPassword, schoolId: docRef.id });
+        // Save user to Firestore
+        await setDoc(doc(db, 'users', uid), {
+          uid: uid,
+          email: adminUsername,
+          role: 'school_admin',
+          schoolId: docRef.id,
+          fullName: `${newSchool.name} Admin`,
+          phone: '',
+          status: 'active',
+          createdAt: new Date().toISOString()
+        });
+
+        setCreatedCredentials({ adminUsername, adminPassword: password, schoolId: docRef.id });
         fetchSchools();
         setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving school:", error);
-      alert("Failed to save school");
+      alert(`Failed to save school: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -155,8 +172,10 @@ export function SuperAdminSchools() {
                   <div className="mt-3 text-center sm:mt-5">
                     <h3 className="text-lg leading-6 font-medium text-slate-900">School Created Successfully</h3>
                     <div className="mt-4 bg-slate-50 p-4 rounded-md border border-slate-200 text-left">
-                      <p className="text-sm text-slate-600 mb-2">The school has been created. To set up the admin, please have them sign in with Google and an existing Super Admin can assign them the school_admin role for this school.</p>
+                      <p className="text-sm text-slate-600 mb-2">The school and its admin account have been created. Please securely share these credentials with the school administrator.</p>
                       <p className="text-sm font-medium text-slate-900">School ID: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.schoolId}</span></p>
+                      <p className="text-sm font-medium text-slate-900 mt-2">Admin Email: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.adminUsername}</span></p>
+                      <p className="text-sm font-medium text-slate-900 mt-2">Admin Password: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.adminPassword}</span></p>
                     </div>
                   </div>
                   <div className="mt-5 sm:mt-6">
@@ -209,10 +228,10 @@ export function SuperAdminSchools() {
                     </div>
                   </div>
                   <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
-                    <button type="submit" className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
-                      {editingSchool ? 'Save Changes' : 'Create School'}
+                    <button type="submit" disabled={loading} className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50">
+                      {loading ? 'Processing...' : (editingSchool ? 'Save Changes' : 'Create School')}
                     </button>
-                    <button type="button" onClick={() => setShowAddModal(false)} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
+                    <button type="button" onClick={() => setShowAddModal(false)} disabled={loading} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50">
                       Cancel
                     </button>
                   </div>

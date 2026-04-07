@@ -43,8 +43,40 @@ export function Login() {
     setLoading(true);
 
     try {
+      // Handle special super admin login
+      let loginEmail = email;
+      if (email === 'admin@pro') {
+        loginEmail = 'admin@pro.com'; // Firebase requires a valid email format
+      }
+
       if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
+        try {
+          await signInWithEmailAndPassword(auth, loginEmail, password);
+        } catch (loginError: any) {
+          // If the special super admin doesn't exist yet, bootstrap it
+          if (email === 'admin@pro' && password === 'admin123' && (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential' || loginError.code === 'auth/invalid-login-credentials')) {
+            try {
+              const result = await createUserWithEmailAndPassword(auth, loginEmail, password);
+              await setDoc(doc(db, 'users', result.user.uid), {
+                uid: result.user.uid,
+                email: loginEmail,
+                role: 'super_admin',
+                schoolId: null,
+                fullName: 'Super Admin',
+                phone: '',
+                status: 'active',
+                createdAt: new Date().toISOString()
+              });
+            } catch (createError: any) {
+              if (createError.code === 'auth/email-already-in-use') {
+                throw new Error('Invalid credentials'); // It exists but wrong password
+              }
+              throw createError;
+            }
+          } else {
+            throw loginError;
+          }
+        }
         // The onAuthStateChanged listener in AuthContext will handle the redirect
       } else if (mode === 'signup') {
         const result = await createUserWithEmailAndPassword(auth, email, password);
@@ -216,7 +248,7 @@ export function Login() {
                 <label className="block text-sm font-medium text-gray-700">Email address (Username)</label>
                 <div className="mt-1">
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

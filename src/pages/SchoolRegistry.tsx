@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, UserPlus, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
+import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SchoolRegistry() {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ export function SchoolRegistry() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUser, setNewUser] = useState({ role: 'teacher', fullName: '', email: '', phone: '' });
   const [createdUserCredentials, setCreatedUserCredentials] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const [showAddLearner, setShowAddLearner] = useState(false);
   const [editingLearner, setEditingLearner] = useState<any>(null);
@@ -55,9 +57,19 @@ export function SchoolRegistry() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.schoolId) return;
+    setLoading(true);
 
     try {
-      await addDoc(collection(db, 'users'), {
+      if (!newUser.email) {
+        throw new Error("Email is required to create a user account.");
+      }
+
+      // Create user in Firebase Auth using secondary app
+      const { uid, password } = await createAuthUser(newUser.email);
+
+      // Save user to Firestore
+      await setDoc(doc(db, 'users', uid), {
+        uid: uid,
         ...newUser,
         schoolId: user.schoolId,
         status: 'active',
@@ -65,12 +77,14 @@ export function SchoolRegistry() {
       });
 
       // Show credentials info
-      setCreatedUserCredentials({ username: newUser.email || 'N/A', password: 'User must sign in with Google' });
+      setCreatedUserCredentials({ username: newUser.email, password });
       fetchData();
       setNewUser({ role: 'teacher', fullName: '', email: '', phone: '' });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding user:", error);
-      alert("Failed to add user");
+      alert(`Failed to add user: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -284,7 +298,7 @@ export function SchoolRegistry() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700">Email</label>
-                        <input type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                        <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700">Phone</label>
@@ -293,10 +307,10 @@ export function SchoolRegistry() {
                     </div>
                   </div>
                   <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse">
-                    <button type="submit" className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
-                      Create User
+                    <button type="submit" disabled={loading} className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50">
+                      {loading ? 'Processing...' : 'Create User'}
                     </button>
-                    <button type="button" onClick={() => setShowAddUser(false)} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm">
+                    <button type="button" onClick={() => setShowAddUser(false)} disabled={loading} className="mt-3 w-full inline-flex justify-center rounded-md border border-slate-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-slate-700 hover:bg-slate-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50">
                       Cancel
                     </button>
                   </div>
