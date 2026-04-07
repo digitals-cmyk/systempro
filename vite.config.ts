@@ -13,6 +13,9 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'firebase/firestore': path.resolve(__dirname, './src/lib/localDb.ts'),
+        'firebase/auth': path.resolve(__dirname, './src/lib/localAuth.ts'),
+        'firebase/app': path.resolve(__dirname, './src/lib/localApp.ts'),
       },
     },
     server: {
