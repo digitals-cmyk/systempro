@@ -1,36 +1,58 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Calendar } from 'lucide-react';
+import { Plus, Calendar, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Timetable() {
+  const { user } = useAuth();
   const [timetables, setTimetables] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEntry, setNewEntry] = useState({ grade: '', subject: '', day: 'Monday', time: '' });
 
   const fetchTimetables = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/timetable', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) setTimetables(await res.json());
+    if (!user?.schoolId) return;
+    try {
+      const q = query(collection(db, 'timetable'), where('schoolId', '==', user.schoolId));
+      const snapshot = await getDocs(q);
+      setTimetables(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching timetables:", error);
+    }
   };
 
   useEffect(() => {
     fetchTimetables();
-  }, []);
+  }, [user]);
 
   const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/timetable', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(newEntry)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
+    try {
+      await addDoc(collection(db, 'timetable'), {
+        ...newEntry,
+        schoolId: user.schoolId,
+        createdAt: new Date().toISOString()
+      });
+
       setShowAddModal(false);
       setNewEntry({ grade: '', subject: '', day: 'Monday', time: '' });
       fetchTimetables();
+    } catch (error) {
+      console.error("Error adding timetable entry:", error);
+      alert("Failed to add timetable entry");
+    }
+  };
+
+  const handleDeleteEntry = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this entry?')) return;
+    try {
+      await deleteDoc(doc(db, 'timetable', id));
+      fetchTimetables();
+    } catch (error) {
+      console.error("Error deleting timetable entry:", error);
+      alert("Failed to delete timetable entry");
     }
   };
 
@@ -58,6 +80,9 @@ export default function Timetable() {
                   <p className="text-sm text-slate-500">{entry.day} at {entry.time}</p>
                 </div>
               </div>
+              <button onClick={() => handleDeleteEntry(entry.id)} className="text-red-600 hover:text-red-900">
+                <Trash2 className="h-4 w-4" />
+              </button>
             </li>
           ))}
           {timetables.length === 0 && (

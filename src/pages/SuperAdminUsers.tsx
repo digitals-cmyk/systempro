@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, Edit2, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export function SuperAdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [newUser, setNewUser] = useState({ username: '', fullName: '', email: '', password: '' });
+  const [newUser, setNewUser] = useState({ username: '', fullName: '', email: '', role: 'super_admin' });
 
   const fetchUsers = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/super/users', { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) setUsers(await res.json());
+    try {
+      const q = query(collection(db, 'users'), where('role', '==', 'super_admin'));
+      const querySnapshot = await getDocs(q);
+      const usersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(usersData);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
   };
 
   useEffect(() => {
@@ -19,57 +26,53 @@ export function SuperAdminUsers() {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
     
-    if (editingUser) {
-      const res = await fetch(`/api/super/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newUser)
-      });
-      if (res.ok) {
+    try {
+      if (editingUser) {
+        const userRef = doc(db, 'users', editingUser.id);
+        await updateDoc(userRef, {
+          username: newUser.username,
+          fullName: newUser.fullName,
+          email: newUser.email
+        });
         setShowAddModal(false);
         setEditingUser(null);
         fetchUsers();
-        setNewUser({ username: '', fullName: '', email: '', password: '' });
-      }
-    } else {
-      const res = await fetch('/api/super/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newUser)
-      });
-
-      if (res.ok) {
+        setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
+      } else {
+        await addDoc(collection(db, 'users'), {
+          ...newUser,
+          status: 'active',
+          createdAt: new Date().toISOString()
+        });
         setShowAddModal(false);
         fetchUsers();
-        setNewUser({ username: '', fullName: '', email: '', password: '' });
+        setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       }
+    } catch (error) {
+      console.error("Error saving user:", error);
+      alert("Failed to save user");
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
+  const handleDeleteUser = async (id: string) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/super/users/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
+    try {
+      await deleteDoc(doc(db, 'users', id));
       fetchUsers();
-    } else {
-      const data = await res.json();
-      alert(data.error || 'Failed to delete user');
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Failed to delete user");
     }
   };
 
   const openEditUser = (user: any) => {
     setEditingUser(user);
     setNewUser({
-      username: user.username,
-      fullName: user.full_name || '',
+      username: user.username || '',
+      fullName: user.fullName || '',
       email: user.email || '',
-      password: '' // Don't populate password
+      role: 'super_admin'
     });
     setShowAddModal(true);
   };
@@ -82,7 +85,7 @@ export function SuperAdminUsers() {
           <button
             onClick={() => {
               setEditingUser(null);
-              setNewUser({ username: '', fullName: '', email: '', password: '' });
+              setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
               setShowAddModal(true);
             }}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
@@ -104,8 +107,8 @@ export function SuperAdminUsers() {
             <tbody className="bg-white divide-y divide-slate-200">
               {users.map((user) => (
                 <tr key={user.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{user.username}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.full_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{user.username || user.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.fullName}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.email}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onClick={() => openEditUser(user)} className="text-blue-600 hover:text-blue-900 mr-3">
@@ -139,7 +142,7 @@ export function SuperAdminUsers() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Username</label>
-                      <input type="text" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                      <input type="text" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Full Name</label>
@@ -149,9 +152,8 @@ export function SuperAdminUsers() {
                       <label className="block text-sm font-medium text-slate-700">Email</label>
                       <input type="email" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">Password {editingUser && '(Leave blank to keep current)'}</label>
-                      <input type={editingUser ? "password" : "text"} required={!editingUser} value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="mt-1 block w-full border border-slate-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                    <div className="text-sm text-slate-500 mt-2">
+                      Note: The user will need to sign in with Google using this email address.
                     </div>
                   </div>
                 </div>

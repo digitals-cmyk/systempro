@@ -1,32 +1,59 @@
 import { useState, useEffect } from 'react';
 import { Users, BookOpen, GraduationCap, Clock } from 'lucide-react';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export function SchoolAdminDashboard() {
   const [stats, setStats] = useState({ totalStudents: 0, totalStaff: 0, totalClasses: 0, totalExams: 0 });
-  const [user, setUser] = useState<any>(null);
+  const { user } = useAuth();
+  const [schoolName, setSchoolName] = useState('');
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      setUser(JSON.parse(userStr));
-    }
-
     const fetchStats = async () => {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/school/stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setStats(await res.json());
+      if (!user?.schoolId) return;
+
+      try {
+        // Fetch school name
+        const schoolDoc = await getDoc(doc(db, 'schools', user.schoolId));
+        if (schoolDoc.exists()) {
+          setSchoolName(schoolDoc.data().name);
+        }
+
+        // Fetch students
+        const studentsQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', '==', 'learner'));
+        const studentsSnapshot = await getDocs(studentsQuery);
+        
+        // Fetch staff
+        const staffQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', 'in', ['teacher', 'school_admin']));
+        const staffSnapshot = await getDocs(staffQuery);
+
+        // Fetch grades
+        const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', user.schoolId));
+        const gradesSnapshot = await getDocs(gradesQuery);
+
+        // Fetch exams
+        const examsQuery = query(collection(db, 'exams'), where('schoolId', '==', user.schoolId));
+        const examsSnapshot = await getDocs(examsQuery);
+
+        setStats({
+          totalStudents: studentsSnapshot.size,
+          totalStaff: staffSnapshot.size,
+          totalClasses: gradesSnapshot.size,
+          totalExams: examsSnapshot.size
+        });
+      } catch (error) {
+        console.error("Error fetching stats:", error);
       }
     };
+
     fetchStats();
-  }, []);
+  }, [user]);
 
   return (
     <div className="space-y-6">
       <div className="bg-white shadow rounded-lg border border-slate-200 p-6">
-        <h2 className="text-2xl font-bold text-slate-900">Welcome to {user?.school?.name || 'School'}</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Welcome to {schoolName || 'School'}</h2>
         <p className="mt-1 text-slate-500">Here is an overview of your school's activity today.</p>
       </div>
 

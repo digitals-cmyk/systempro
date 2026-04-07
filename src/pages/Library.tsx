@@ -1,36 +1,58 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Library as LibraryIcon } from 'lucide-react';
+import { Plus, Library as LibraryIcon, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Library() {
+  const { user } = useAuth();
   const [books, setBooks] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBook, setNewBook] = useState({ title: '', author: '', status: 'available' });
 
   const fetchBooks = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/library', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) setBooks(await res.json());
+    if (!user?.schoolId) return;
+    try {
+      const q = query(collection(db, 'library'), where('schoolId', '==', user.schoolId));
+      const snapshot = await getDocs(q);
+      setBooks(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching books:", error);
+    }
   };
 
   useEffect(() => {
     fetchBooks();
-  }, []);
+  }, [user]);
 
   const handleAddBook = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/library', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(newBook)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
+    try {
+      await addDoc(collection(db, 'library'), {
+        ...newBook,
+        schoolId: user.schoolId,
+        createdAt: new Date().toISOString()
+      });
+
       setShowAddModal(false);
       setNewBook({ title: '', author: '', status: 'available' });
       fetchBooks();
+    } catch (error) {
+      console.error("Error adding book:", error);
+      alert("Failed to add book");
+    }
+  };
+
+  const handleDeleteBook = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this book?')) return;
+    try {
+      await deleteDoc(doc(db, 'library', id));
+      fetchBooks();
+    } catch (error) {
+      console.error("Error deleting book:", error);
+      alert("Failed to delete book");
     }
   };
 
@@ -58,9 +80,14 @@ export default function Library() {
                   <p className="text-sm text-slate-500">By {book.author}</p>
                 </div>
               </div>
-              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${book.status === 'available' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                {book.status}
-              </span>
+              <div className="flex items-center space-x-4">
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${book.status === 'available' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                  {book.status}
+                </span>
+                <button onClick={() => handleDeleteBook(book.id)} className="text-red-600 hover:text-red-900">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </li>
           ))}
           {books.length === 0 && (

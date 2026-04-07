@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Book, Users, GraduationCap, Award, Map } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Academics() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('grades');
   
   // Data states
@@ -24,61 +28,116 @@ export default function Academics() {
   const [gradeSystemForm, setGradeSystemForm] = useState({ name: '', minMark: '', maxMark: '', gradeLetter: '', remarks: '' });
 
   const fetchData = async () => {
-    const token = localStorage.getItem('token');
-    const headers = { Authorization: `Bearer ${token}` };
-    
-    const [gradesRes, streamsRes, subjectsRes, allocRes, sysRes, usersRes] = await Promise.all([
-      fetch('/api/school/grades', { headers }),
-      fetch('/api/school/streams', { headers }),
-      fetch('/api/school/subjects', { headers }),
-      fetch('/api/school/subject-allocations', { headers }),
-      fetch('/api/school/grade-systems', { headers }),
-      fetch('/api/school/users', { headers })
-    ]);
+    if (!user?.schoolId) return;
 
-    if (gradesRes.ok) setGrades(await gradesRes.json());
-    if (streamsRes.ok) setStreams(await streamsRes.json());
-    if (subjectsRes.ok) setSubjects(await subjectsRes.json());
-    if (allocRes.ok) setAllocations(await allocRes.json());
-    if (sysRes.ok) setGradeSystems(await sysRes.json());
-    if (usersRes.ok) {
-      const allUsers = await usersRes.json();
-      setTeachers(allUsers.filter((u: any) => u.role === 'teacher'));
+    try {
+      const schoolId = user.schoolId;
+
+      // Fetch grades
+      const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', schoolId));
+      const gradesSnapshot = await getDocs(gradesQuery);
+      setGrades(gradesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch streams
+      const streamsQuery = query(collection(db, 'streams'), where('schoolId', '==', schoolId));
+      const streamsSnapshot = await getDocs(streamsQuery);
+      setStreams(streamsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch subjects
+      const subjectsQuery = query(collection(db, 'subjects'), where('schoolId', '==', schoolId));
+      const subjectsSnapshot = await getDocs(subjectsQuery);
+      setSubjects(subjectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch grade systems
+      const sysQuery = query(collection(db, 'gradeSystems'), where('schoolId', '==', schoolId));
+      const sysSnapshot = await getDocs(sysQuery);
+      setGradeSystems(sysSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch teachers
+      const teachersQuery = query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher'));
+      const teachersSnapshot = await getDocs(teachersQuery);
+      const teachersData = teachersSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setTeachers(teachersData);
+
+      // Fetch allocations and populate names
+      const allocQuery = query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId));
+      const allocSnapshot = await getDocs(allocQuery);
+      
+      const allocs = await Promise.all(allocSnapshot.docs.map(async (d) => {
+        const data = d.data();
+        let subjectName = 'Unknown';
+        let gradeName = 'Unknown';
+        let teacherName = 'Unknown';
+
+        try {
+          const subjectDoc = await getDoc(doc(db, 'subjects', data.subjectId));
+          if (subjectDoc.exists()) subjectName = subjectDoc.data().name;
+
+          const gradeDoc = await getDoc(doc(db, 'grades', data.gradeId));
+          if (gradeDoc.exists()) gradeName = gradeDoc.data().name;
+
+          const teacherDoc = await getDoc(doc(db, 'users', data.teacherId));
+          if (teacherDoc.exists()) teacherName = teacherDoc.data().fullName || teacherDoc.data().email;
+        } catch (e) {
+          console.error("Error fetching related docs for allocation", e);
+        }
+
+        return {
+          id: d.id,
+          ...data,
+          subjectName,
+          gradeName,
+          teacherName
+        };
+      }));
+      setAllocations(allocs);
+
+    } catch (error) {
+      console.error("Error fetching academic data:", error);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user]);
 
-  const handleSave = async (e: React.FormEvent, endpoint: string, payload: any) => {
+  const handleSave = async (e: React.FormEvent, collectionName: string, payload: any) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const method = editingItem ? 'PUT' : 'POST';
-    const url = editingItem ? `/api/school/${endpoint}/${editingItem.id}` : `/api/school/${endpoint}`;
-    
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
+    try {
+      const dataToSave = {
+        ...payload,
+        schoolId: user.schoolId,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (editingItem) {
+        await updateDoc(doc(db, collectionName, editingItem.id), dataToSave);
+      } else {
+        dataToSave.createdAt = new Date().toISOString();
+        await addDoc(collection(db, collectionName), dataToSave);
+      }
+
       setShowModal(false);
       setEditingItem(null);
       resetForms();
       fetchData();
+    } catch (error) {
+      console.error(`Error saving ${collectionName}:`, error);
+      alert(`Failed to save ${collectionName}`);
     }
   };
 
-  const handleDelete = async (id: number, endpoint: string) => {
+  const handleDelete = async (id: string, collectionName: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/school/${endpoint}/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) fetchData();
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      fetchData();
+    } catch (error) {
+      console.error(`Error deleting ${collectionName}:`, error);
+      alert(`Failed to delete ${collectionName}`);
+    }
   };
 
   const resetForms = () => {
@@ -94,8 +153,8 @@ export default function Academics() {
     if (type === 'grades') setGradeForm({ name: item.name });
     if (type === 'streams') setStreamForm({ name: item.name });
     if (type === 'subjects') setSubjectForm({ name: item.name, code: item.code || '' });
-    if (type === 'allocations') setAllocationForm({ subjectId: item.subject_id, gradeId: item.grade_id, teacherId: item.teacher_id });
-    if (type === 'grade-systems') setGradeSystemForm({ name: item.name, minMark: item.min_mark, maxMark: item.max_mark, gradeLetter: item.grade_letter, remarks: item.remarks || '' });
+    if (type === 'subjectAllocations') setAllocationForm({ subjectId: item.subjectId, gradeId: item.gradeId, teacherId: item.teacherId });
+    if (type === 'gradeSystems') setGradeSystemForm({ name: item.name, minMark: item.minMark, maxMark: item.maxMark, gradeLetter: item.gradeLetter, remarks: item.remarks || '' });
     setShowModal(true);
   };
 
@@ -106,8 +165,8 @@ export default function Academics() {
           { id: 'grades', name: 'Grades', icon: GraduationCap },
           { id: 'streams', name: 'Streams', icon: Users },
           { id: 'subjects', name: 'Subjects', icon: Book },
-          { id: 'allocations', name: 'Subject Allocations', icon: Map },
-          { id: 'grade-systems', name: 'Grade System', icon: Award },
+          { id: 'subjectAllocations', name: 'Subject Allocations', icon: Map },
+          { id: 'gradeSystems', name: 'Grade System', icon: Award },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -222,7 +281,7 @@ export default function Academics() {
         )}
 
         {/* ALLOCATIONS TAB */}
-        {activeTab === 'allocations' && (
+        {activeTab === 'subjectAllocations' && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
@@ -236,12 +295,12 @@ export default function Academics() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {allocations.map(a => (
                   <tr key={a.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.subject_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.grade_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.teacher_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.subjectName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.gradeName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{a.teacherName}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => openEdit(a, 'allocations')} className="text-blue-600 hover:text-blue-900 mr-3"><Edit2 className="h-4 w-4" /></button>
-                      <button onClick={() => handleDelete(a.id, 'subject-allocations')} className="text-red-600 hover:text-red-900"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={() => openEdit(a, 'subjectAllocations')} className="text-blue-600 hover:text-blue-900 mr-3"><Edit2 className="h-4 w-4" /></button>
+                      <button onClick={() => handleDelete(a.id, 'subjectAllocations')} className="text-red-600 hover:text-red-900"><Trash2 className="h-4 w-4" /></button>
                     </td>
                   </tr>
                 ))}
@@ -251,7 +310,7 @@ export default function Academics() {
         )}
 
         {/* GRADE SYSTEMS TAB */}
-        {activeTab === 'grade-systems' && (
+        {activeTab === 'gradeSystems' && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
@@ -267,12 +326,12 @@ export default function Academics() {
                 {gradeSystems.map(g => (
                   <tr key={g.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{g.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{g.min_mark} - {g.max_mark}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-900">{g.grade_letter}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{g.minMark} - {g.maxMark}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-900">{g.gradeLetter}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{g.remarks}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => openEdit(g, 'grade-systems')} className="text-blue-600 hover:text-blue-900 mr-3"><Edit2 className="h-4 w-4" /></button>
-                      <button onClick={() => handleDelete(g.id, 'grade-systems')} className="text-red-600 hover:text-red-900"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={() => openEdit(g, 'gradeSystems')} className="text-blue-600 hover:text-blue-900 mr-3"><Edit2 className="h-4 w-4" /></button>
+                      <button onClick={() => handleDelete(g.id, 'gradeSystems')} className="text-red-600 hover:text-red-900"><Trash2 className="h-4 w-4" /></button>
                     </td>
                   </tr>
                 ))}
@@ -286,7 +345,7 @@ export default function Academics() {
       {showModal && (
         <div className="fixed inset-0 bg-slate-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-lg font-medium mb-4">{editingItem ? 'Edit' : 'Add'} {activeTab.replace('-', ' ')}</h2>
+            <h2 className="text-lg font-medium mb-4">{editingItem ? 'Edit' : 'Add'} {activeTab.replace(/([A-Z])/g, ' $1').trim()}</h2>
             
             {activeTab === 'grades' && (
               <form onSubmit={e => handleSave(e, 'grades', gradeForm)} className="space-y-4">
@@ -331,8 +390,8 @@ export default function Academics() {
               </form>
             )}
 
-            {activeTab === 'allocations' && (
-              <form onSubmit={e => handleSave(e, 'subject-allocations', allocationForm)} className="space-y-4">
+            {activeTab === 'subjectAllocations' && (
+              <form onSubmit={e => handleSave(e, 'subjectAllocations', allocationForm)} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">Subject</label>
                   <select required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" value={allocationForm.subjectId} onChange={e => setAllocationForm({...allocationForm, subjectId: e.target.value})}>
@@ -351,7 +410,7 @@ export default function Academics() {
                   <label className="block text-sm font-medium text-slate-700">Teacher</label>
                   <select required className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" value={allocationForm.teacherId} onChange={e => setAllocationForm({...allocationForm, teacherId: e.target.value})}>
                     <option value="">Select Teacher...</option>
-                    {teachers.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                    {teachers.map(t => <option key={t.id} value={t.id}>{t.fullName || t.email}</option>)}
                   </select>
                 </div>
                 <div className="flex justify-end space-x-3 mt-6">
@@ -361,8 +420,8 @@ export default function Academics() {
               </form>
             )}
 
-            {activeTab === 'grade-systems' && (
-              <form onSubmit={e => handleSave(e, 'grade-systems', gradeSystemForm)} className="space-y-4">
+            {activeTab === 'gradeSystems' && (
+              <form onSubmit={e => handleSave(e, 'gradeSystems', gradeSystemForm)} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">System Name</label>
                   <input type="text" required placeholder="e.g. Standard Grading" className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" value={gradeSystemForm.name} onChange={e => setGradeSystemForm({...gradeSystemForm, name: e.target.value})} />

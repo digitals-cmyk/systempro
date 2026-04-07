@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Plus, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export function SuperAdminSchools() {
   const [schools, setSchools] = useState<any[]>([]);
@@ -9,9 +11,13 @@ export function SuperAdminSchools() {
   const [createdCredentials, setCreatedCredentials] = useState<any>(null);
 
   const fetchSchools = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/super/schools', { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) setSchools(await res.json());
+    try {
+      const querySnapshot = await getDocs(collection(db, 'schools'));
+      const schoolsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSchools(schoolsData);
+    } catch (error) {
+      console.error("Error fetching schools:", error);
+    }
   };
 
   useEffect(() => {
@@ -20,44 +26,46 @@ export function SuperAdminSchools() {
 
   const handleSaveSchool = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
     
-    if (editingSchool) {
-      const res = await fetch(`/api/super/schools/${editingSchool.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newSchool)
-      });
-      if (res.ok) {
+    try {
+      if (editingSchool) {
+        const schoolRef = doc(db, 'schools', editingSchool.id);
+        await updateDoc(schoolRef, newSchool);
         setShowAddModal(false);
         setEditingSchool(null);
         fetchSchools();
         setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
-      }
-    } else {
-      const res = await fetch('/api/super/schools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newSchool)
-      });
+      } else {
+        const docRef = await addDoc(collection(db, 'schools'), {
+          ...newSchool,
+          createdAt: new Date().toISOString()
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        setCreatedCredentials(data);
+        // Auto-generate school admin credentials to show to the user
+        // Note: In a real app, we'd use Cloud Functions to create the Auth user securely.
+        // For this demo, we'll just show the credentials they *should* create or send an invite.
+        const adminUsername = `admin@${newSchool.code.toLowerCase()}`;
+        const adminPassword = Math.random().toString(36).slice(-8);
+
+        setCreatedCredentials({ adminUsername, adminPassword, schoolId: docRef.id });
         fetchSchools();
         setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
       }
+    } catch (error) {
+      console.error("Error saving school:", error);
+      alert("Failed to save school");
     }
   };
 
-  const handleDeleteSchool = async (id: number) => {
+  const handleDeleteSchool = async (id: string) => {
     if (!confirm('Are you sure you want to delete this school? All associated data will be lost.')) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/super/schools/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) fetchSchools();
+    try {
+      await deleteDoc(doc(db, 'schools', id));
+      fetchSchools();
+    } catch (error) {
+      console.error("Error deleting school:", error);
+      alert("Failed to delete school");
+    }
   };
 
   const openEditSchool = (school: any) => {
@@ -67,7 +75,7 @@ export function SuperAdminSchools() {
       code: school.code,
       address: school.address || '',
       email: school.email || '',
-      principalName: school.principal_name || '',
+      principalName: school.principalName || '',
       status: school.status
     });
     setShowAddModal(true);
@@ -106,7 +114,7 @@ export function SuperAdminSchools() {
                 <tr key={school.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{school.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.principal_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.principalName}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${school.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                       {school.status}
@@ -147,9 +155,8 @@ export function SuperAdminSchools() {
                   <div className="mt-3 text-center sm:mt-5">
                     <h3 className="text-lg leading-6 font-medium text-slate-900">School Created Successfully</h3>
                     <div className="mt-4 bg-slate-50 p-4 rounded-md border border-slate-200 text-left">
-                      <p className="text-sm text-slate-600 mb-2">Please save these credentials. They will not be shown again.</p>
-                      <p className="text-sm font-medium text-slate-900">Admin Username: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.adminUsername}</span></p>
-                      <p className="text-sm font-medium text-slate-900 mt-2">Admin Password: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.adminPassword}</span></p>
+                      <p className="text-sm text-slate-600 mb-2">The school has been created. To set up the admin, please have them sign in with Google and an existing Super Admin can assign them the school_admin role for this school.</p>
+                      <p className="text-sm font-medium text-slate-900">School ID: <span className="font-mono bg-white px-2 py-1 border rounded">{createdCredentials.schoolId}</span></p>
                     </div>
                   </div>
                   <div className="mt-5 sm:mt-6">

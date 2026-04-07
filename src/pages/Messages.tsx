@@ -1,36 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, MessageSquare } from 'lucide-react';
+import { Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Messages() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMessage, setNewMessage] = useState({ recipientGroup: 'All', content: '' });
 
   const fetchMessages = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/messages', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) setMessages(await res.json());
+    if (!user?.schoolId) return;
+    try {
+      const q = query(collection(db, 'messages'), where('schoolId', '==', user.schoolId));
+      const snapshot = await getDocs(q);
+      // Sort in memory since we might not have a composite index yet
+      const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      msgs.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setMessages(msgs);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
   };
 
   useEffect(() => {
     fetchMessages();
-  }, []);
+  }, [user]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(newMessage)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
+    try {
+      await addDoc(collection(db, 'messages'), {
+        ...newMessage,
+        schoolId: user.schoolId,
+        senderId: user.uid,
+        senderName: user.fullName || user.email,
+        createdAt: new Date().toISOString()
+      });
+
       setShowAddModal(false);
       setNewMessage({ recipientGroup: 'All', content: '' });
       fetchMessages();
+    } catch (error) {
+      console.error("Error sending message:", error);
+      alert("Failed to send message");
+    }
+  };
+
+  const handleDeleteMessage = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this message?')) return;
+    try {
+      await deleteDoc(doc(db, 'messages', id));
+      fetchMessages();
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      alert("Failed to delete message");
     }
   };
 
@@ -51,10 +78,18 @@ export default function Messages() {
         <ul className="divide-y divide-slate-200">
           {messages.map((msg) => (
             <li key={msg.id} className="px-6 py-4">
-              <div className="flex items-center mb-2">
-                <MessageSquare className="h-5 w-5 text-slate-400 mr-2" />
-                <span className="text-sm font-medium text-slate-900">To: {msg.recipient_group}</span>
-                <span className="ml-auto text-xs text-slate-500">{new Date(msg.created_at).toLocaleString()}</span>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <MessageSquare className="h-5 w-5 text-slate-400 mr-2" />
+                  <span className="text-sm font-medium text-slate-900">To: {msg.recipientGroup}</span>
+                  <span className="ml-4 text-xs text-slate-500">From: {msg.senderName}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-xs text-slate-500">{new Date(msg.createdAt).toLocaleString()}</span>
+                  <button onClick={() => handleDeleteMessage(msg.id)} className="text-red-600 hover:text-red-900">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <p className="text-sm text-slate-700">{msg.content}</p>
             </li>

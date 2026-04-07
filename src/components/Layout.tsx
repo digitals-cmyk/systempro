@@ -2,30 +2,46 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, School, Users, Settings, LayoutDashboard, BookOpen, Clock, MessageSquare, CreditCard, Library, GraduationCap } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAuth } from '../lib/AuthContext';
+import { auth, db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export function Layout({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
-  const [user, setUser] = useState<any>(null);
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [schoolName, setSchoolName] = useState<string>('');
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const parsedUser = JSON.parse(userStr);
-      setUser(parsedUser);
-      if (!allowedRoles.includes(parsedUser.role)) {
+    if (!loading) {
+      if (!user) {
+        navigate('/login');
+      } else if (!allowedRoles.includes(user.role)) {
         navigate('/login');
       }
-    } else {
-      navigate('/login');
     }
-  }, [allowedRoles, navigate]);
+  }, [user, loading, allowedRoles, navigate]);
 
-  if (!user) return null;
+  useEffect(() => {
+    const fetchSchoolName = async () => {
+      if (user?.schoolId) {
+        try {
+          const schoolDoc = await getDoc(doc(db, 'schools', user.schoolId));
+          if (schoolDoc.exists()) {
+            setSchoolName(schoolDoc.data().name);
+          }
+        } catch (error) {
+          console.error("Error fetching school name:", error);
+        }
+      }
+    };
+    fetchSchoolName();
+  }, [user]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  if (loading || !user) return null;
+
+  const handleLogout = async () => {
+    await auth.signOut();
     navigate('/login');
   };
 
@@ -57,7 +73,7 @@ export function Layout({ children, allowedRoles }: { children: React.ReactNode, 
         <div className="h-16 flex items-center px-6 border-b border-slate-800">
           <School className="h-6 w-6 text-blue-400 mr-3" />
           <span className="font-bold text-lg truncate">
-            {user.role === 'super_admin' ? 'Pro School Management' : user.school?.name || 'School Portal'}
+            {user.role === 'super_admin' ? 'Pro School Management' : schoolName || 'School Portal'}
           </span>
         </div>
         

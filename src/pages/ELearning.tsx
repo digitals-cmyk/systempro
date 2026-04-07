@@ -1,36 +1,66 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Video } from 'lucide-react';
+import { Plus, Video, FileText, Link as LinkIcon, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function ELearning() {
+  const { user } = useAuth();
   const [materials, setMaterials] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMaterial, setNewMaterial] = useState({ title: '', type: 'Video', url: '' });
 
   const fetchMaterials = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/elearning', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) setMaterials(await res.json());
+    if (!user?.schoolId) return;
+    try {
+      const q = query(collection(db, 'elearning'), where('schoolId', '==', user.schoolId));
+      const snapshot = await getDocs(q);
+      setMaterials(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching materials:", error);
+    }
   };
 
   useEffect(() => {
     fetchMaterials();
-  }, []);
+  }, [user]);
 
   const handleAddMaterial = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/elearning', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(newMaterial)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
+    try {
+      await addDoc(collection(db, 'elearning'), {
+        ...newMaterial,
+        schoolId: user.schoolId,
+        createdAt: new Date().toISOString()
+      });
       setShowAddModal(false);
       setNewMaterial({ title: '', type: 'Video', url: '' });
       fetchMaterials();
+    } catch (error) {
+      console.error("Error adding material:", error);
+      alert("Failed to add material");
+    }
+  };
+
+  const handleDeleteMaterial = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this material?')) return;
+    try {
+      await deleteDoc(doc(db, 'elearning', id));
+      fetchMaterials();
+    } catch (error) {
+      console.error("Error deleting material:", error);
+      alert("Failed to delete material");
+    }
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'Video': return <Video className="h-6 w-6 text-slate-400 mr-3" />;
+      case 'Document': return <FileText className="h-6 w-6 text-slate-400 mr-3" />;
+      case 'Link': return <LinkIcon className="h-6 w-6 text-slate-400 mr-3" />;
+      default: return <FileText className="h-6 w-6 text-slate-400 mr-3" />;
     }
   };
 
@@ -52,15 +82,20 @@ export default function ELearning() {
           {materials.map((mat) => (
             <li key={mat.id} className="px-6 py-4 flex items-center justify-between">
               <div className="flex items-center">
-                <Video className="h-6 w-6 text-slate-400 mr-3" />
+                {getIcon(mat.type)}
                 <div>
                   <p className="text-sm font-medium text-slate-900">{mat.title}</p>
                   <a href={mat.url} target="_blank" rel="noreferrer" className="text-sm text-blue-500 hover:underline">{mat.url}</a>
                 </div>
               </div>
-              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                {mat.type}
-              </span>
+              <div className="flex items-center space-x-4">
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                  {mat.type}
+                </span>
+                <button onClick={() => handleDeleteMaterial(mat.id)} className="text-red-600 hover:text-red-900">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </li>
           ))}
           {materials.length === 0 && (

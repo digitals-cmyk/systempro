@@ -1,72 +1,77 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, BookOpen, Edit2, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Exams() {
+  const { user } = useAuth();
   const [exams, setExams] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingExam, setEditingExam] = useState<any>(null);
   const [newExam, setNewExam] = useState({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
 
   const fetchExams = async () => {
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/exams', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) setExams(await res.json());
+    if (!user?.schoolId) return;
+    try {
+      const examsQuery = query(collection(db, 'exams'), where('schoolId', '==', user.schoolId));
+      const snapshot = await getDocs(examsQuery);
+      setExams(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching exams:", error);
+    }
   };
 
   useEffect(() => {
     fetchExams();
-  }, []);
+  }, [user]);
 
   const handleAddExam = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    if (!user?.schoolId) return;
     
-    if (editingExam) {
-      const res = await fetch(`/api/school/exams/${editingExam.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newExam)
-      });
-      if (res.ok) {
-        setShowAddModal(false);
-        setEditingExam(null);
-        setNewExam({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
-        fetchExams();
+    try {
+      if (editingExam) {
+        await updateDoc(doc(db, 'exams', editingExam.id), {
+          ...newExam,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await addDoc(collection(db, 'exams'), {
+          ...newExam,
+          schoolId: user.schoolId,
+          createdAt: new Date().toISOString()
+        });
       }
-    } else {
-      const res = await fetch('/api/school/exams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newExam)
-      });
-
-      if (res.ok) {
-        setShowAddModal(false);
-        setNewExam({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
-        fetchExams();
-      }
+      
+      setShowAddModal(false);
+      setEditingExam(null);
+      setNewExam({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
+      fetchExams();
+    } catch (error) {
+      console.error("Error saving exam:", error);
+      alert("Failed to save exam");
     }
   };
 
-  const handleDeleteExam = async (id: number) => {
+  const handleDeleteExam = async (id: string) => {
     if (!confirm('Are you sure you want to delete this exam?')) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/school/exams/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) fetchExams();
+    try {
+      await deleteDoc(doc(db, 'exams', id));
+      fetchExams();
+    } catch (error) {
+      console.error("Error deleting exam:", error);
+      alert("Failed to delete exam");
+    }
   };
 
   const openEditExam = (exam: any) => {
     setEditingExam(exam);
     setNewExam({
-      name: exam.name,
-      term: exam.term,
-      year: exam.year,
-      status: exam.status
+      name: exam.name || '',
+      term: exam.term || '',
+      year: exam.year || '',
+      status: exam.status || 'published'
     });
     setShowAddModal(true);
   };
@@ -76,7 +81,11 @@ export default function Exams() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-slate-900">Exams Management</h1>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            setEditingExam(null);
+            setNewExam({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
+            setShowAddModal(true);
+          }}
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
         >
           <Plus className="h-4 w-4 mr-2" />

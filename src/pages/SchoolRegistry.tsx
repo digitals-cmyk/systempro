@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, UserPlus, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../lib/AuthContext';
 
 export function SchoolRegistry() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('staff');
   const [users, setUsers] = useState<any[]>([]);
   const [learners, setLearners] = useState<any[]>([]);
@@ -17,92 +21,112 @@ export function SchoolRegistry() {
   const [newLearner, setNewLearner] = useState({ admissionNumber: '', fullName: '', dob: '', dateOfAdmission: '', assessmentNumber: '', grade: '', stream: '' });
 
   const fetchData = async () => {
-    const token = localStorage.getItem('token');
-    const [usersRes, learnersRes, gradesRes, streamsRes] = await Promise.all([
-      fetch('/api/school/users', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/school/learners', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/school/grades', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/school/streams', { headers: { Authorization: `Bearer ${token}` } })
-    ]);
-    
-    if (usersRes.ok) setUsers(await usersRes.json());
-    if (learnersRes.ok) setLearners(await learnersRes.json());
-    if (gradesRes.ok) setGrades(await gradesRes.json());
-    if (streamsRes.ok) setStreams(await streamsRes.json());
+    if (!user?.schoolId) return;
+
+    try {
+      // Fetch users (staff)
+      const usersQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', 'in', ['teacher', 'parent', 'staff']));
+      const usersSnapshot = await getDocs(usersQuery);
+      setUsers(usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch learners
+      const learnersQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', '==', 'learner'));
+      const learnersSnapshot = await getDocs(learnersQuery);
+      setLearners(learnersSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch grades
+      const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', user.schoolId));
+      const gradesSnapshot = await getDocs(gradesQuery);
+      setGrades(gradesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch streams
+      const streamsQuery = query(collection(db, 'streams'), where('schoolId', '==', user.schoolId));
+      const streamsSnapshot = await getDocs(streamsQuery);
+      setStreams(streamsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching registry data:", error);
+    }
   };
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const res = await fetch('/api/school/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(newUser)
-    });
+    if (!user?.schoolId) return;
 
-    if (res.ok) {
-      const data = await res.json();
-      setCreatedUserCredentials(data);
+    try {
+      await addDoc(collection(db, 'users'), {
+        ...newUser,
+        schoolId: user.schoolId,
+        status: 'active',
+        createdAt: new Date().toISOString()
+      });
+
+      // Show credentials info
+      setCreatedUserCredentials({ username: newUser.email || 'N/A', password: 'User must sign in with Google' });
       fetchData();
       setNewUser({ role: 'teacher', fullName: '', email: '', phone: '' });
+    } catch (error) {
+      console.error("Error adding user:", error);
+      alert("Failed to add user");
     }
   };
 
   const handleAddLearner = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
+    if (!user?.schoolId) return;
     
-    if (editingLearner) {
-      const res = await fetch(`/api/school/learners/${editingLearner.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newLearner)
-      });
-      if (res.ok) {
+    try {
+      if (editingLearner) {
+        const learnerRef = doc(db, 'users', editingLearner.id);
+        await updateDoc(learnerRef, {
+          ...newLearner
+        });
         setShowAddLearner(false);
         setEditingLearner(null);
         fetchData();
         setNewLearner({ admissionNumber: '', fullName: '', dob: '', dateOfAdmission: '', assessmentNumber: '', grade: '', stream: '' });
-      }
-    } else {
-      const res = await fetch('/api/school/learners', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newLearner)
-      });
-
-      if (res.ok) {
+      } else {
+        await addDoc(collection(db, 'users'), {
+          ...newLearner,
+          role: 'learner',
+          schoolId: user.schoolId,
+          status: 'active',
+          createdAt: new Date().toISOString()
+        });
         setShowAddLearner(false);
         fetchData();
         setNewLearner({ admissionNumber: '', fullName: '', dob: '', dateOfAdmission: '', assessmentNumber: '', grade: '', stream: '' });
       }
+    } catch (error) {
+      console.error("Error saving learner:", error);
+      alert("Failed to save learner");
     }
   };
 
-  const handleDeleteLearner = async (id: number) => {
+  const handleDeleteLearner = async (id: string) => {
     if (!confirm('Are you sure you want to delete this learner?')) return;
-    const token = localStorage.getItem('token');
-    const res = await fetch(`/api/school/learners/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) fetchData();
+    try {
+      await deleteDoc(doc(db, 'users', id));
+      fetchData();
+    } catch (error) {
+      console.error("Error deleting learner:", error);
+      alert("Failed to delete learner");
+    }
   };
 
   const openEditLearner = (learner: any) => {
     setEditingLearner(learner);
     setNewLearner({
-      admissionNumber: learner.admission_number,
-      fullName: learner.full_name,
-      dob: learner.dob,
-      dateOfAdmission: learner.date_of_admission,
-      assessmentNumber: learner.assessment_number || '',
-      grade: learner.grade,
-      stream: learner.stream
+      admissionNumber: learner.admissionNumber || '',
+      fullName: learner.fullName || '',
+      dob: learner.dob || '',
+      dateOfAdmission: learner.dateOfAdmission || '',
+      assessmentNumber: learner.assessmentNumber || '',
+      grade: learner.grade || '',
+      stream: learner.stream || ''
     });
     setShowAddLearner(true);
   };
@@ -149,7 +173,7 @@ export function SchoolRegistry() {
                   <tbody className="bg-white divide-y divide-slate-200">
                     {users.map((u) => (
                       <tr key={u.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{u.full_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{u.fullName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 capitalize">{u.role.replace('_', ' ')}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{u.email || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -187,10 +211,10 @@ export function SchoolRegistry() {
                   <tbody className="bg-white divide-y divide-slate-200">
                     {learners.map((l) => (
                       <tr key={l.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{l.admission_number}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{l.full_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{l.admissionNumber}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{l.fullName}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{l.grade} - {l.stream}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(l.date_of_admission).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{l.dateOfAdmission ? new Date(l.dateOfAdmission).toLocaleDateString() : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button onClick={() => openEditLearner(l)} className="text-blue-600 hover:text-blue-900 mr-3">
                             <Edit2 className="h-4 w-4" />
@@ -231,7 +255,7 @@ export function SchoolRegistry() {
                     <h3 className="text-lg leading-6 font-medium text-slate-900">User Created Successfully</h3>
                     <div className="mt-4 bg-slate-50 p-4 rounded-md border border-slate-200 text-left">
                       <p className="text-sm text-slate-600 mb-2">Please share these credentials securely.</p>
-                      <p className="text-sm font-medium text-slate-900">Username: <span className="font-mono bg-white px-2 py-1 border rounded">{createdUserCredentials.username}</span></p>
+                      <p className="text-sm font-medium text-slate-900">Email: <span className="font-mono bg-white px-2 py-1 border rounded">{createdUserCredentials.username}</span></p>
                       <p className="text-sm font-medium text-slate-900 mt-2">Password: <span className="font-mono bg-white px-2 py-1 border rounded">{createdUserCredentials.password}</span></p>
                     </div>
                   </div>
