@@ -11,11 +11,11 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 
 export function Login() {
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot_password'>('login');
+  const [mode, setMode] = useState<'login' | 'activate' | 'forgot_password'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('school_admin');
+  const [activationCode, setActivationCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -76,23 +76,31 @@ export function Login() {
           }
         }
         // The onAuthStateChanged listener in AuthContext will handle the redirect
-      } else if (mode === 'signup') {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        const firebaseUser = result.user;
-        
-        // Create user document in Firestore
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          role: role,
-          schoolId: null, // They will need to create/join a school later or in the dashboard
-          fullName: fullName,
-          phone: '',
-          status: 'active',
-          createdAt: new Date().toISOString()
-        });
-        
-        // The onAuthStateChanged listener in AuthContext will handle the redirect
+      } else if (mode === 'activate') {
+        // To activate, they must first sign in with the temporary credentials (activation code)
+        try {
+          const result = await signInWithEmailAndPassword(auth, email, activationCode);
+          
+          // In a real Firebase app, we would update the password here:
+          // await updatePassword(result.user, newPassword);
+          
+          // For local mock, we'll just update the authUsers array in localStorage
+          const authUsers = JSON.parse(localStorage.getItem('authUsers') || '[]');
+          const userIndex = authUsers.findIndex((u: any) => u.email === email && u.password === activationCode);
+          if (userIndex >= 0) {
+            authUsers[userIndex].password = newPassword;
+            localStorage.setItem('authUsers', JSON.stringify(authUsers));
+            
+            // Also update the current authUser
+            const currentAuthUser = JSON.parse(localStorage.getItem('authUser') || '{}');
+            currentAuthUser.password = newPassword;
+            localStorage.setItem('authUser', JSON.stringify(currentAuthUser));
+          }
+          
+          setMessage('Account activated successfully!');
+        } catch (err: any) {
+          throw new Error('Invalid activation code or email.');
+        }
       } else if (mode === 'forgot_password') {
         await sendPasswordResetEmail(auth, email);
         setMessage('Password reset email sent! Check your inbox.');
@@ -127,7 +135,7 @@ export function Login() {
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           {mode === 'login' && 'Sign in to your account'}
-          {mode === 'signup' && 'Create a new account'}
+          {mode === 'activate' && 'Activate your new account'}
           {mode === 'forgot_password' && 'Reset your password'}
         </p>
       </div>
@@ -147,38 +155,6 @@ export function Login() {
             )}
 
             <form onSubmit={handleAuthAction} className="space-y-4">
-              {mode === 'signup' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        required
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Role</label>
-                    <div className="mt-1">
-                      <select
-                        value={role}
-                        onChange={(e) => setRole(e.target.value)}
-                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      >
-                        <option value="school_admin">School Admin</option>
-                        <option value="teacher">Teacher</option>
-                        <option value="student">Student</option>
-                        <option value="parent">Parent</option>
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
               <div>
                 <label className="block text-sm font-medium text-gray-700">Email address (Username)</label>
                 <div className="mt-1">
@@ -192,7 +168,36 @@ export function Login() {
                 </div>
               </div>
 
-              {mode !== 'forgot_password' && (
+              {mode === 'activate' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Activation Code (Provided Password)</label>
+                    <div className="mt-1">
+                      <input
+                        type="password"
+                        required
+                        value={activationCode}
+                        onChange={(e) => setActivationCode(e.target.value)}
+                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">New Password</label>
+                    <div className="mt-1">
+                      <input
+                        type="password"
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {mode === 'login' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Password</label>
                   <div className="mt-1">
@@ -227,7 +232,7 @@ export function Login() {
                   disabled={loading}
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 >
-                  {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Sign up' : 'Reset Password'}
+                  {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : mode === 'activate' ? 'Activate Account' : 'Reset Password'}
                 </button>
               </div>
             </form>
@@ -236,8 +241,8 @@ export function Login() {
               {mode === 'login' ? (
                 <p className="text-gray-600">
                   New user?{' '}
-                  <button onClick={() => setMode('signup')} className="font-medium text-blue-600 hover:text-blue-500">
-                    Sign up here
+                  <button onClick={() => setMode('activate')} className="font-medium text-blue-600 hover:text-blue-500">
+                    Activate your account
                   </button>
                 </p>
               ) : (

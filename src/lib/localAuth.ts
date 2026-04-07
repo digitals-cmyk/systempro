@@ -13,8 +13,8 @@ export const signInWithPopup = async () => {
 };
 
 export const signInWithEmailAndPassword = async (authObj: any, email: string, password: string) => {
-  if (email === 'admin@pro.com' && password === 'admin123') {
-    const user = { uid: 'super-admin', email, role: 'super_admin' };
+  if ((email === 'admin@pro.com' || email === 'admin@pro') && password === 'admin123') {
+    const user = { uid: 'super-admin', email: 'admin@pro', role: 'super_admin' };
     
     // Ensure super admin exists in the users collection
     const users = JSON.parse(localStorage.getItem('users') || '[]');
@@ -22,7 +22,7 @@ export const signInWithEmailAndPassword = async (authObj: any, email: string, pa
       users.push({
         id: 'super-admin',
         uid: 'super-admin',
-        email: 'admin@pro.com',
+        email: 'admin@pro',
         role: 'super_admin',
         schoolId: null,
         fullName: 'Super Admin',
@@ -89,9 +89,11 @@ export const sendPasswordResetEmail = async () => {
 };
 
 export const signOut = async (authObj: any) => {
-  localStorage.removeItem('authUser');
-  auth.currentUser = null;
-  setTimeout(() => authListeners.forEach(l => l(null)), 0);
+  if (authObj === auth) {
+    localStorage.removeItem('authUser');
+    auth.currentUser = null;
+    setTimeout(() => authListeners.forEach(l => l(null)), 0);
+  }
 };
 
 export const onAuthStateChanged = (authObj: any, callback: any) => {
