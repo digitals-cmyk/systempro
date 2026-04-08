@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const secondaryApp = initializeApp();
-const secondaryAuth = getAuth();
+const secondaryAuth = getAuth(secondaryApp);
 
 export async function createAuthUser(email: string, password?: string) {
   const pwd = password || Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8) + "!";

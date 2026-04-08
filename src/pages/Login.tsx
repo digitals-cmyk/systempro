@@ -81,21 +81,20 @@ export function Login() {
         try {
           const result = await signInWithEmailAndPassword(auth, email, activationCode);
           
-          // In a real Firebase app, we would update the password here:
-          // await updatePassword(result.user, newPassword);
+          const response = await fetch('/api/auth/update-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, oldPassword: activationCode, newPassword })
+          });
           
-          // For local mock, we'll just update the authUsers array in localStorage
-          const authUsers = JSON.parse(localStorage.getItem('authUsers') || '[]');
-          const userIndex = authUsers.findIndex((u: any) => u.email === email && u.password === activationCode);
-          if (userIndex >= 0) {
-            authUsers[userIndex].password = newPassword;
-            localStorage.setItem('authUsers', JSON.stringify(authUsers));
-            
-            // Also update the current authUser
-            const currentAuthUser = JSON.parse(localStorage.getItem('authUser') || '{}');
-            currentAuthUser.password = newPassword;
-            localStorage.setItem('authUser', JSON.stringify(currentAuthUser));
+          if (!response.ok) {
+            throw new Error('Failed to update password');
           }
+          
+          // Also update the current authUser in localStorage for the frontend session
+          const currentAuthUser = JSON.parse(localStorage.getItem('authUser') || '{}');
+          currentAuthUser.password = newPassword;
+          localStorage.setItem('authUser', JSON.stringify(currentAuthUser));
           
           setMessage('Account activated successfully!');
         } catch (err: any) {
