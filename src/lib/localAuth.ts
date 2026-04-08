@@ -22,6 +22,11 @@ export const signInWithEmailAndPassword = async (authObj: any, email: string, pa
     body: JSON.stringify({ email, password })
   });
   
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("Server returned non-JSON response. Please ensure the backend server is running.");
+  }
+  
   const data = await response.json();
   
   if (!response.ok) {
@@ -47,6 +52,11 @@ export const createUserWithEmailAndPassword = async (authObj: any, email: string
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   });
+  
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("Server returned non-JSON response. Please ensure the backend server is running.");
+  }
   
   const data = await response.json();
   

@@ -17,6 +17,13 @@ export const getDocs = async (queryObj: any) => {
   const collectionName = path.path || path;
   
   const response = await fetch(`/api/db/${collectionName}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch documents: ${response.statusText}`);
+  }
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("Server returned non-JSON response. Please ensure the backend server is running.");
+  }
   let data = await response.json();
   
   if (queryObj.filters) {
@@ -57,30 +64,46 @@ export const addDoc = async (col: any, data: any) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
+  if (!response.ok) {
+    throw new Error(`Failed to add document: ${response.statusText}`);
+  }
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("Server returned non-JSON response. Please ensure the backend server is running.");
+  }
   const result = await response.json();
   return { id: result.id };
 };
 
 export const setDoc = async (docRef: any, data: any) => {
-  await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
+  const response = await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
+  if (!response.ok) {
+    throw new Error(`Failed to set document: ${response.statusText}`);
+  }
 };
 
 export const updateDoc = async (docRef: any, data: any) => {
-  await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
+  const response = await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
+  if (!response.ok) {
+    throw new Error(`Failed to update document: ${response.statusText}`);
+  }
 };
 
 export const deleteDoc = async (docRef: any) => {
-  await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
+  const response = await fetch(`/api/db/${docRef.path}/${docRef.id}`, {
     method: 'DELETE'
   });
+  if (!response.ok) {
+    throw new Error(`Failed to delete document: ${response.statusText}`);
+  }
 };
 
 export const writeBatch = (db: any) => {
@@ -101,9 +124,26 @@ export const writeBatch = (db: any) => {
 };
 
 export const getDoc = async (docRef: any) => {
-  const response = await fetch(`/api/db/${docRef.path}`);
-  const data = await response.json();
-  const doc = data.find((d: any) => d.id === docRef.id);
+  const response = await fetch(`/api/db/${docRef.path}/${docRef.id}`);
+  
+  if (response.status === 404) {
+    return {
+      exists: () => false,
+      data: () => null,
+      id: docRef.id
+    };
+  }
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get document: ${response.statusText}`);
+  }
+  
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("Server returned non-JSON response. Please ensure the backend server is running.");
+  }
+  
+  const doc = await response.json();
   
   return {
     exists: () => !!doc,

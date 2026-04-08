@@ -44,6 +44,21 @@ app.get('/api/db/:collection', (req, res) => {
   }
 });
 
+app.get('/api/db/:collection/:id', (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    const stmt = db.prepare('SELECT data FROM documents WHERE collection = ? AND id = ?');
+    const row = stmt.get(collection, id);
+    if (row) {
+      res.json(JSON.parse((row as any).data));
+    } else {
+      res.status(404).json({ error: 'Document not found' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/db/:collection', (req, res) => {
   const { collection } = req.params;
   const data = req.body;
