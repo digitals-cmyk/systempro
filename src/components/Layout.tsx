@@ -6,6 +6,8 @@ import { useAuth } from '../lib/AuthContext';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
+import { GlobalSearch } from './GlobalSearch';
+
 export function Layout({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -124,6 +126,7 @@ export function Layout({ children, allowedRoles }: { children: React.ReactNode, 
           <h1 className="text-xl font-semibold text-slate-800">
             {navItems.find(i => i.path === location.pathname)?.name || 'Dashboard'}
           </h1>
+          <GlobalSearch />
         </header>
         <main className="flex-1 overflow-y-auto bg-slate-50 p-8">
           {children}
