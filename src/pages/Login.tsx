@@ -5,7 +5,8 @@ import { auth, db } from '../firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  sendPasswordResetEmail 
+  sendPasswordResetEmail,
+  updatePassword
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
@@ -81,22 +82,11 @@ export function Login() {
         try {
           const result = await signInWithEmailAndPassword(auth, email, activationCode);
           
-          const response = await fetch('/api/auth/update-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, oldPassword: activationCode, newPassword })
-          });
-          
-          if (!response.ok) {
-            throw new Error('Failed to update password');
+          if (result.user) {
+            await updatePassword(result.user, newPassword);
+            setMessage('Account activated successfully!');
+            setMode('login');
           }
-          
-          // Also update the current authUser in localStorage for the frontend session
-          const currentAuthUser = JSON.parse(localStorage.getItem('authUser') || '{}');
-          currentAuthUser.password = newPassword;
-          localStorage.setItem('authUser', JSON.stringify(currentAuthUser));
-          
-          setMessage('Account activated successfully!');
         } catch (err: any) {
           throw new Error('Invalid activation code or email.');
         }

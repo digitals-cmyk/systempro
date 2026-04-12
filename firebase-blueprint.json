@@ -1,0 +1,224 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the system (super_admin, school_admin, teacher, parent, learner)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "school_admin", "teacher", "parent", "staff", "learner"] },
+        "schoolId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string" },
+        "lastLogin": { "type": "string" },
+        "admissionNumber": { "type": "string" },
+        "dob": { "type": "string" },
+        "dateOfAdmission": { "type": "string" },
+        "assessmentNumber": { "type": "string" },
+        "grade": { "type": "string" },
+        "stream": { "type": "string" }
+      },
+      "required": ["uid", "role", "status", "createdAt"]
+    },
+    "School": {
+      "title": "School",
+      "description": "A school in the system",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "principalName": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "code", "status", "createdAt"]
+    },
+    "Grade": {
+      "title": "Grade",
+      "description": "A grade/class level in a school",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "schoolId", "createdAt"]
+    },
+    "Stream": {
+      "title": "Stream",
+      "description": "A stream/section in a school",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "schoolId", "createdAt"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "A subject taught in a school",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "code", "schoolId", "createdAt"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "An attendance record",
+      "type": "object",
+      "properties": {
+        "schoolId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "role": { "type": "string" },
+        "type": { "type": "string", "enum": ["sign_in", "sign_out"] },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["schoolId", "userId", "userName", "role", "type", "timestamp"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "An exam in a school",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "term": { "type": "string" },
+        "year": { "type": "string" },
+        "status": { "type": "string", "enum": ["published", "draft", "archived"] },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "term", "year", "status", "schoolId", "createdAt"]
+    },
+    "Timetable": {
+      "title": "Timetable",
+      "description": "A timetable entry",
+      "type": "object",
+      "properties": {
+        "grade": { "type": "string" },
+        "subject": { "type": "string" },
+        "day": { "type": "string" },
+        "time": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["grade", "subject", "day", "time", "schoolId", "createdAt"]
+    },
+    "ELearning": {
+      "title": "ELearning",
+      "description": "An e-learning material",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["Video", "Document", "Link"] },
+        "url": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "type", "url", "schoolId", "createdAt"]
+    },
+    "Library": {
+      "title": "Library",
+      "description": "A library book",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "borrowed"] },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "author", "status", "schoolId", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message",
+      "type": "object",
+      "properties": {
+        "recipientGroup": { "type": "string" },
+        "content": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["recipientGroup", "content", "schoolId", "senderId", "senderName", "createdAt"]
+    },
+    "Fee": {
+      "title": "Fee",
+      "description": "A fee record",
+      "type": "object",
+      "properties": {
+        "learnerId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balance": { "type": "number" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["learnerId", "totalAmount", "paidAmount", "balance", "schoolId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Users collection"
+    },
+    "schools": {
+      "schema": { "$ref": "#/entities/School" },
+      "description": "Schools collection"
+    },
+    "grades": {
+      "schema": { "$ref": "#/entities/Grade" },
+      "description": "Grades collection"
+    },
+    "streams": {
+      "schema": { "$ref": "#/entities/Stream" },
+      "description": "Streams collection"
+    },
+    "subjects": {
+      "schema": { "$ref": "#/entities/Subject" },
+      "description": "Subjects collection"
+    },
+    "attendance": {
+      "schema": { "$ref": "#/entities/Attendance" },
+      "description": "Attendance collection"
+    },
+    "exams": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exams collection"
+    },
+    "timetable": {
+      "schema": { "$ref": "#/entities/Timetable" },
+      "description": "Timetable collection"
+    },
+    "elearning": {
+      "schema": { "$ref": "#/entities/ELearning" },
+      "description": "ELearning collection"
+    },
+    "library": {
+      "schema": { "$ref": "#/entities/Library" },
+      "description": "Library collection"
+    },
+    "messages": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages collection"
+    },
+    "fees": {
+      "schema": { "$ref": "#/entities/Fee" },
+      "description": "Fees collection"
+    }
+  }
+}
