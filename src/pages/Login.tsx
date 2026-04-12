@@ -44,7 +44,7 @@ export function Login() {
     try {
       // Handle special super admin login
       let loginEmail = email;
-      if (email === 'admin@pro') {
+      if (email === 'admin@pro' || email === 'admin@pro.com') {
         loginEmail = 'admin@pro.com'; // Firebase requires a valid email format
       }
 
@@ -53,7 +53,7 @@ export function Login() {
           await signInWithEmailAndPassword(auth, loginEmail, password);
         } catch (loginError: any) {
           // If the special super admin doesn't exist yet, bootstrap it
-          if (email === 'admin@pro' && password === 'admin123' && (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential' || loginError.code === 'auth/invalid-login-credentials')) {
+          if ((email === 'admin@pro' || email === 'admin@pro.com') && password === 'admin123' && (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential' || loginError.code === 'auth/invalid-login-credentials')) {
             try {
               const result = await createUserWithEmailAndPassword(auth, loginEmail, password);
               await setDoc(doc(db, 'users', result.user.uid), {
@@ -97,7 +97,11 @@ export function Login() {
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Authentication failed');
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('Invalid email or password. Please try again.');
+      } else {
+        setError(err.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }
