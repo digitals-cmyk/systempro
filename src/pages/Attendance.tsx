@@ -4,9 +4,18 @@ import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
+interface AttendanceRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  role: string;
+  type: 'sign_in' | 'sign_out';
+  timestamp: string;
+}
+
 export default function Attendance() {
   const { user } = useAuth();
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSignedInToday, setHasSignedInToday] = useState(false);
 
@@ -15,7 +24,7 @@ export default function Attendance() {
     try {
       const q = query(collection(db, 'attendance'), where('schoolId', '==', user.schoolId));
       const snapshot = await getDocs(q);
-      const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
       
       // Sort by date descending
       records.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

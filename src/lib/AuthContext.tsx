@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 
 interface UserData {
   uid: string;
@@ -27,8 +27,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        let hasUpdatedLogin = false;
+
         unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
+            if (!hasUpdatedLogin) {
+              hasUpdatedLogin = true;
+              updateDoc(doc(db, 'users', firebaseUser.uid), {
+                lastLogin: new Date().toISOString()
+              }).catch(e => {
+                // Ignore permission errors or not-found errors during initial bootstrap
+                if (e.code !== 'permission-denied' && e.code !== 'not-found') {
+                  console.error("Failed to update last login", e);
+                }
+              });
+            }
             setUser({ uid: firebaseUser.uid, ...docSnap.data() } as UserData);
           } else {
             setUser(null);

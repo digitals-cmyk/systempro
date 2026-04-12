@@ -47,36 +47,62 @@ export function SuperAdminSchools() {
         fetchSchools();
         setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
       } else {
-        const docRef = await addDoc(collection(db, 'schools'), {
-          ...newSchool,
-          createdAt: new Date().toISOString()
-        });
+        let docRef;
+        try {
+          docRef = await addDoc(collection(db, 'schools'), {
+            ...newSchool,
+            createdAt: new Date().toISOString()
+          });
 
-        // Auto-generate school admin credentials
-        const adminUsername = `admin@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
-        
-        // Create user in Firebase Auth using secondary app
-        const { uid, password } = await createAuthUser(adminUsername);
+          // Auto-generate school admin credentials
+          let adminUsername = `admin@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
+          
+          // Create user in Firebase Auth using secondary app
+          let uid, password;
+          try {
+            const result = await createAuthUser(adminUsername);
+            uid = result.uid;
+            password = result.password;
+          } catch (e: any) {
+            if (e.code === 'auth/email-already-in-use') {
+               adminUsername = `admin${Math.floor(Math.random() * 10000)}@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
+               const result = await createAuthUser(adminUsername);
+               uid = result.uid;
+               password = result.password;
+            } else {
+               throw e;
+            }
+          }
 
-        // Save user to Firestore
-        await setDoc(doc(db, 'users', uid), {
-          uid: uid,
-          email: adminUsername,
-          role: 'school_admin',
-          schoolId: docRef.id,
-          fullName: `${newSchool.name} Admin`,
-          phone: '',
-          status: 'active',
-          createdAt: new Date().toISOString()
-        });
+          // Save user to Firestore
+          await setDoc(doc(db, 'users', uid), {
+            uid: uid,
+            email: adminUsername,
+            role: 'school_admin',
+            schoolId: docRef.id,
+            fullName: `${newSchool.name} Admin`,
+            phone: '',
+            status: 'active',
+            createdAt: new Date().toISOString()
+          });
 
-        setCreatedCredentials({ adminUsername, adminPassword: password, schoolId: docRef.id });
-        fetchSchools();
-        setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
+          setCreatedCredentials({ adminUsername, adminPassword: password, schoolId: docRef.id });
+          fetchSchools();
+          setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
+        } catch (error: any) {
+          if (docRef) {
+            await deleteDoc(docRef).catch(console.error); // Rollback school creation
+          }
+          throw error;
+        }
       }
     } catch (error: any) {
       console.error("Error saving school:", error);
-      alert(`Failed to save school: ${error.message || 'Unknown error'}`);
+      if (error.code === 'auth/operation-not-allowed') {
+        alert("Failed to create user: Email/Password authentication is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else {
+        alert(`Failed to save school: ${error.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }

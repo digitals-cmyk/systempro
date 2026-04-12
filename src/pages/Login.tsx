@@ -50,7 +50,23 @@ export function Login() {
 
       if (mode === 'login') {
         try {
-          await signInWithEmailAndPassword(auth, loginEmail, password);
+          const userCredential = await signInWithEmailAndPassword(auth, loginEmail, password);
+          // Check if it's the super admin and ensure their Firestore document exists
+          if (loginEmail === 'admin@pro.com') {
+            const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+            if (!userDoc.exists()) {
+              await setDoc(doc(db, 'users', userCredential.user.uid), {
+                uid: userCredential.user.uid,
+                email: loginEmail,
+                role: 'super_admin',
+                schoolId: null,
+                fullName: 'Super Admin',
+                phone: '',
+                status: 'active',
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
         } catch (loginError: any) {
           // If the special super admin doesn't exist yet, bootstrap it
           if ((email === 'admin@pro' || email === 'admin@pro.com') && password === 'admin123' && (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential' || loginError.code === 'auth/invalid-login-credentials')) {

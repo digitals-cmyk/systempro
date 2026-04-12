@@ -71,24 +71,44 @@ export function SchoolRegistry() {
       }
 
       // Create user in Firebase Auth using secondary app
-      const { uid, password } = await createAuthUser(newUser.email);
+      let uid, password;
+      let userEmail = newUser.email;
+      try {
+        const result = await createAuthUser(userEmail);
+        uid = result.uid;
+        password = result.password;
+      } catch (e: any) {
+        if (e.code === 'auth/email-already-in-use') {
+           userEmail = `${newUser.email.split('@')[0]}${Math.floor(Math.random() * 10000)}@${newUser.email.split('@')[1] || 'pro.com'}`;
+           const result = await createAuthUser(userEmail);
+           uid = result.uid;
+           password = result.password;
+        } else {
+           throw e;
+        }
+      }
 
       // Save user to Firestore
       await setDoc(doc(db, 'users', uid), {
         uid: uid,
         ...newUser,
+        email: userEmail,
         schoolId: user.schoolId,
         status: 'active',
         createdAt: new Date().toISOString()
       });
 
       // Show credentials info
-      setCreatedUserCredentials({ username: newUser.email, password });
+      setCreatedUserCredentials({ username: userEmail, password });
       fetchData();
       setNewUser({ role: 'teacher', fullName: '', email: '', phone: '' });
     } catch (error: any) {
       console.error("Error adding user:", error);
-      alert(`Failed to add user: ${error.message || 'Unknown error'}`);
+      if (error.code === 'auth/operation-not-allowed') {
+        alert("Failed to create user: Email/Password authentication is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else {
+        alert(`Failed to add user: ${error.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }

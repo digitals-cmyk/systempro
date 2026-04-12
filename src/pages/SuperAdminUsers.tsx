@@ -6,6 +6,8 @@ import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SuperAdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
+  const [schoolAdmins, setSchoolAdmins] = useState<any[]>([]);
+  const [schools, setSchools] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [newUser, setNewUser] = useState({ username: '', fullName: '', email: '', role: 'super_admin' });
@@ -18,6 +20,14 @@ export function SuperAdminUsers() {
       const querySnapshot = await getDocs(q);
       const usersData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsers(usersData);
+
+      // Fetch school admins and schools to show logged in schools
+      const adminsQ = query(collection(db, 'users'), where('role', '==', 'school_admin'));
+      const adminsSnapshot = await getDocs(adminsQ);
+      setSchoolAdmins(adminsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      const schoolsSnapshot = await getDocs(collection(db, 'schools'));
+      setSchools(schoolsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -45,26 +55,45 @@ export function SuperAdminUsers() {
         setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       } else {
         // Create user in Auth
-        const { uid, password } = await createAuthUser(newUser.email);
+        let uid, password;
+        let userEmail = newUser.email;
+        try {
+          const result = await createAuthUser(userEmail);
+          uid = result.uid;
+          password = result.password;
+        } catch (e: any) {
+          if (e.code === 'auth/email-already-in-use') {
+             userEmail = `${newUser.email.split('@')[0]}${Math.floor(Math.random() * 10000)}@${newUser.email.split('@')[1] || 'pro.com'}`;
+             const result = await createAuthUser(userEmail);
+             uid = result.uid;
+             password = result.password;
+          } else {
+             throw e;
+          }
+        }
 
         // Save user to Firestore
         await setDoc(doc(db, 'users', uid), {
           uid: uid,
           username: newUser.username,
           fullName: newUser.fullName,
-          email: newUser.email,
+          email: userEmail,
           role: 'super_admin',
           status: 'active',
           createdAt: new Date().toISOString()
         });
         
-        setCreatedCredentials({ email: newUser.email, password });
+        setCreatedCredentials({ email: userEmail, password });
         fetchUsers();
         setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       }
     } catch (error: any) {
       console.error("Error saving user:", error);
-      alert(`Failed to save user: ${error.message || 'Unknown error'}`);
+      if (error.code === 'auth/operation-not-allowed') {
+        alert("Failed to create user: Email/Password authentication is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
+      } else {
+        alert(`Failed to save user: ${error.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -138,6 +167,45 @@ export function SuperAdminUsers() {
               {users.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">No users found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg border border-slate-200 mt-8">
+        <div className="px-4 py-5 sm:px-6 border-b border-slate-200">
+          <h3 className="text-lg leading-6 font-medium text-slate-900">Logged-in Schools (School Admins)</h3>
+          <p className="mt-1 text-sm text-slate-500">Details of school administrators and their last login activity.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">School Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Admin Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Last Login</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+              {schoolAdmins.map((admin) => {
+                const school = schools.find(s => s.id === admin.schoolId);
+                return (
+                  <tr key={admin.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{school?.name || 'Unknown School'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{admin.email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{admin.fullName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                      {admin.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never'}
+                    </td>
+                  </tr>
+                );
+              })}
+              {schoolAdmins.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">No school admins found.</td>
                 </tr>
               )}
             </tbody>

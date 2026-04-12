@@ -4,9 +4,19 @@ import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } 
 import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
+interface FeeRecord {
+  id: string;
+  learnerId: string;
+  totalAmount: number;
+  paidAmount: number;
+  balance: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export default function Fees() {
   const { user } = useAuth();
-  const [fees, setFees] = useState<any[]>([]);
+  const [fees, setFees] = useState<FeeRecord[]>([]);
   const [learners, setLearners] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingFee, setEditingFee] = useState<any>(null);
@@ -17,7 +27,7 @@ export default function Fees() {
     try {
       const q = query(collection(db, 'fees'), where('schoolId', '==', user.schoolId));
       const snapshot = await getDocs(q);
-      setFees(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setFees(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FeeRecord)));
     } catch (error) {
       console.error("Error fetching fees:", error);
     }
@@ -44,7 +54,7 @@ export default function Fees() {
     if (!user?.schoolId) return;
 
     try {
-      const feeData = {
+      const feeData: any = {
         ...newFee,
         schoolId: user.schoolId,
         totalAmount: parseFloat(newFee.totalAmount),
@@ -113,8 +123,8 @@ export default function Fees() {
           {fees.map((fee) => {
             const learner = learners.find(l => l.id === fee.learnerId);
             const learnerName = learner ? `${learner.fullName} (${learner.admissionNumber})` : 'Unknown Learner';
-            const totalAmount = parseFloat(fee.totalAmount || '0');
-            const paidAmount = parseFloat(fee.paidAmount || '0');
+            const totalAmount = fee.totalAmount || 0;
+            const paidAmount = fee.paidAmount || 0;
             const balance = totalAmount - paidAmount;
 
             return (
