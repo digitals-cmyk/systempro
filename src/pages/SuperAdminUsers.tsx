@@ -41,10 +41,17 @@ export function SuperAdminUsers() {
     try {
       const token = localStorage.getItem('token');
       if (editingUser) {
-        // Update user not fully implemented in basic API, skipping for brevity or we can add it
-        // For now, just close modal
+        const res = await fetch(`/api/users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newUser)
+        });
+        if (!res.ok) throw new Error('Failed to update user');
+        
         setShowAddModal(false);
         setEditingUser(null);
+        fetchUsers();
+        setNewUser({ username: '', fullName: '', email: '', role: 'super_admin' });
       } else {
         const res = await fetch('/api/users', {
           method: 'POST',
