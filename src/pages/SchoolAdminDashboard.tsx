@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Users, BookOpen, GraduationCap, Clock } from 'lucide-react';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export function SchoolAdminDashboard() {
@@ -14,33 +12,21 @@ export function SchoolAdminDashboard() {
       if (!user?.schoolId) return;
 
       try {
-        // Fetch school name
-        const schoolDoc = await getDoc(doc(db, 'schools', user.schoolId));
-        if (schoolDoc.exists()) {
-          setSchoolName(schoolDoc.data().name);
-        }
-
-        // Fetch students
-        const studentsQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', '==', 'learner'));
-        const studentsSnapshot = await getDocs(studentsQuery);
+        const token = localStorage.getItem('token');
+        
+        // Fetch learners
+        const learnersRes = await fetch('/api/school/learners', { headers: { 'Authorization': `Bearer ${token}` } });
+        const learners = learnersRes.ok ? await learnersRes.json() : [];
         
         // Fetch staff
-        const staffQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', 'in', ['teacher', 'school_admin']));
-        const staffSnapshot = await getDocs(staffQuery);
-
-        // Fetch grades
-        const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', user.schoolId));
-        const gradesSnapshot = await getDocs(gradesQuery);
-
-        // Fetch exams
-        const examsQuery = query(collection(db, 'exams'), where('schoolId', '==', user.schoolId));
-        const examsSnapshot = await getDocs(examsQuery);
+        const usersRes = await fetch('/api/school/users', { headers: { 'Authorization': `Bearer ${token}` } });
+        const users = usersRes.ok ? await usersRes.json() : [];
 
         setStats({
-          totalStudents: studentsSnapshot.size,
-          totalStaff: staffSnapshot.size,
-          totalClasses: gradesSnapshot.size,
-          totalExams: examsSnapshot.size
+          totalStudents: learners.length,
+          totalStaff: users.length,
+          totalClasses: 0, // Mocked
+          totalExams: 0 // Mocked
         });
       } catch (error) {
         console.error("Error fetching stats:", error);

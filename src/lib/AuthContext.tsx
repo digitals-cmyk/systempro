@@ -1,7 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 
 interface UserData {
   uid: string;
@@ -14,59 +11,58 @@ interface UserData {
 interface AuthContextType {
   user: UserData | null;
   loading: boolean;
+  login: (token: string, user: UserData) => void;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  loading: true,
+  login: () => {},
+  logout: () => {}
+});
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeSnapshot: () => void;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        let hasUpdatedLogin = false;
-
-        unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
-          if (docSnap.exists()) {
-            if (!hasUpdatedLogin) {
-              hasUpdatedLogin = true;
-              updateDoc(doc(db, 'users', firebaseUser.uid), {
-                lastLogin: new Date().toISOString()
-              }).catch(e => {
-                // Ignore permission errors or not-found errors during initial bootstrap
-                if (e.code !== 'permission-denied' && e.code !== 'not-found') {
-                  console.error("Failed to update last login", e);
-                }
-              });
-            }
-            setUser({ uid: firebaseUser.uid, ...docSnap.data() } as UserData);
-          } else {
-            setUser(null);
-          }
-          setLoading(false);
-        }, (error) => {
-          console.error("Error fetching user data:", error);
-          setUser(null);
-          setLoading(false);
-        });
-      } else {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Invalid token');
+      })
+      .then(data => {
+        setUser(data);
+      })
+      .catch(() => {
+        localStorage.removeItem('token');
         setUser(null);
+      })
+      .finally(() => {
         setLoading(false);
-        if (unsubscribeSnapshot) unsubscribeSnapshot();
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
-    };
+      });
+    } else {
+      setLoading(false);
+    }
   }, []);
 
+  const login = (token: string, userData: UserData) => {
+    localStorage.setItem('token', token);
+    setUser(userData);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

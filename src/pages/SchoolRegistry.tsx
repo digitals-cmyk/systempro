@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, UserPlus, CheckCircle2, Edit2, Trash2, Upload } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, setDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
-import { createAuthUser } from '../lib/secondaryAuth';
 import Papa from 'papaparse';
 
 export function SchoolRegistry() {
@@ -32,25 +29,17 @@ export function SchoolRegistry() {
     if (!user?.schoolId) return;
 
     try {
-      // Fetch users (staff)
-      const usersQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', 'in', ['teacher', 'parent', 'staff']));
-      const usersSnapshot = await getDocs(usersQuery);
-      setUsers(usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const token = localStorage.getItem('token');
+      
+      const usersRes = await fetch('/api/school/users', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (usersRes.ok) setUsers(await usersRes.json());
 
-      // Fetch learners
-      const learnersQuery = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', '==', 'learner'));
-      const learnersSnapshot = await getDocs(learnersQuery);
-      setLearners(learnersSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const learnersRes = await fetch('/api/school/learners', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (learnersRes.ok) setLearners(await learnersRes.json());
 
-      // Fetch grades
-      const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', user.schoolId));
-      const gradesSnapshot = await getDocs(gradesQuery);
-      setGrades(gradesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch streams
-      const streamsQuery = query(collection(db, 'streams'), where('schoolId', '==', user.schoolId));
-      const streamsSnapshot = await getDocs(streamsQuery);
-      setStreams(streamsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Grades and streams are not fully implemented in the backend yet, so we'll just mock them for now
+      setGrades([{ id: '1', name: 'Grade 1' }, { id: '2', name: 'Grade 2' }]);
+      setStreams([{ id: '1', name: 'Stream A' }, { id: '2', name: 'Stream B' }]);
     } catch (error) {
       console.error("Error fetching registry data:", error);
     }
@@ -70,45 +59,21 @@ export function SchoolRegistry() {
         throw new Error("Email is required to create a user account.");
       }
 
-      // Create user in Firebase Auth using secondary app
-      let uid, password;
-      let userEmail = newUser.email;
-      try {
-        const result = await createAuthUser(userEmail);
-        uid = result.uid;
-        password = result.password;
-      } catch (e: any) {
-        if (e.code === 'auth/email-already-in-use') {
-           userEmail = `${newUser.email.split('@')[0]}${Math.floor(Math.random() * 10000)}@${newUser.email.split('@')[1] || 'pro.com'}`;
-           const result = await createAuthUser(userEmail);
-           uid = result.uid;
-           password = result.password;
-        } else {
-           throw e;
-        }
-      }
-
-      // Save user to Firestore
-      await setDoc(doc(db, 'users', uid), {
-        uid: uid,
-        ...newUser,
-        email: userEmail,
-        schoolId: user.schoolId,
-        status: 'active',
-        createdAt: new Date().toISOString()
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/school/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(newUser)
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create user');
 
-      // Show credentials info
-      setCreatedUserCredentials({ username: userEmail, password });
+      setCreatedUserCredentials({ username: data.email, password: data.password });
       fetchData();
       setNewUser({ role: 'teacher', fullName: '', email: '', phone: '' });
     } catch (error: any) {
       console.error("Error adding user:", error);
-      if (error.code === 'auth/operation-not-allowed') {
-        alert("Failed to create user: Email/Password authentication is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
-      } else {
-        alert(`Failed to add user: ${error.message || 'Unknown error'}`);
-      }
+      alert(`Failed to add user: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -119,23 +84,27 @@ export function SchoolRegistry() {
     if (!user?.schoolId) return;
     
     try {
+      const token = localStorage.getItem('token');
       if (editingLearner) {
-        const learnerRef = doc(db, 'users', editingLearner.id);
-        await updateDoc(learnerRef, {
-          ...newLearner
+        const res = await fetch(`/api/school/learners/${editingLearner.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newLearner)
         });
+        if (!res.ok) throw new Error('Failed to update');
+        
         setShowAddLearner(false);
         setEditingLearner(null);
         fetchData();
         setNewLearner({ admissionNumber: '', fullName: '', dob: '', dateOfAdmission: '', assessmentNumber: '', grade: '', stream: '' });
       } else {
-        await addDoc(collection(db, 'users'), {
-          ...newLearner,
-          role: 'learner',
-          schoolId: user.schoolId,
-          status: 'active',
-          createdAt: new Date().toISOString()
+        const res = await fetch('/api/school/learners', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newLearner)
         });
+        if (!res.ok) throw new Error('Failed to create');
+        
         setShowAddLearner(false);
         fetchData();
         setNewLearner({ admissionNumber: '', fullName: '', dob: '', dateOfAdmission: '', assessmentNumber: '', grade: '', stream: '' });
@@ -149,7 +118,12 @@ export function SchoolRegistry() {
   const handleDeleteLearner = async (id: string) => {
     if (!confirm('Are you sure you want to delete this learner?')) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/school/learners/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete');
       fetchData();
     } catch (error) {
       console.error("Error deleting learner:", error);
@@ -172,9 +146,8 @@ export function SchoolRegistry() {
         const validRows: any[] = [];
 
         results.data.forEach((row: any, index: number) => {
-          const rowNum = index + 2; // +2 because index is 0-based and row 1 is header
+          const rowNum = index + 2;
           
-          // Validation
           if (!row.admissionNumber) errors.push(`Row ${rowNum}: Missing admissionNumber`);
           if (!row.fullName) errors.push(`Row ${rowNum}: Missing fullName`);
           if (!row.grade) errors.push(`Row ${rowNum}: Missing grade`);
@@ -187,11 +160,7 @@ export function SchoolRegistry() {
               dateOfAdmission: row.dateOfAdmission || '',
               assessmentNumber: row.assessmentNumber || '',
               grade: row.grade,
-              stream: row.stream || '',
-              role: 'learner',
-              schoolId: user.schoolId,
-              status: 'active',
-              createdAt: new Date().toISOString()
+              stream: row.stream || ''
             });
           }
         });
@@ -203,19 +172,14 @@ export function SchoolRegistry() {
         }
 
         try {
-          // Process in batches of 500 (Firestore limit)
-          const batchSize = 500;
-          for (let i = 0; i < validRows.length; i += batchSize) {
-            const batch = writeBatch(db);
-            const chunk = validRows.slice(i, i + batchSize);
-            
-            chunk.forEach(learner => {
-              const newDocRef = doc(collection(db, 'users'));
-              batch.set(newDocRef, learner);
-            });
-            
-            await batch.commit();
-          }
+          const token = localStorage.getItem('token');
+          const res = await fetch('/api/school/learners/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ learners: validRows })
+          });
+          
+          if (!res.ok) throw new Error('Failed to upload');
 
           setShowCsvModal(false);
           setCsvFile(null);

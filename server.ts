@@ -1,213 +1,370 @@
 import express from 'express';
-import cors from 'cors';
-import Database from 'better-sqlite3';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import fs from 'fs';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cors from 'cors';
+import { fileURLToPath } from 'url';
 
-const app = express();
-const PORT = 3000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-app.use(cors());
-app.use(express.json());
-
-// Initialize SQLite Database
-const dbDir = path.join(process.cwd(), 'data');
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir);
-}
-const db = new Database(path.join(dbDir, 'database.sqlite'));
-
-// Create generic documents table for NoSQL-like behavior
-db.exec(`
-  CREATE TABLE IF NOT EXISTS documents (
-    collection TEXT,
-    id TEXT,
-    data TEXT,
-    PRIMARY KEY (collection, id)
-  )
-`);
-
-// API Routes
-app.get('/api/db/:collection', (req, res) => {
-  const { collection } = req.params;
-  try {
-    const stmt = db.prepare('SELECT id, data FROM documents WHERE collection = ?');
-    const rows = stmt.all(collection);
-    const docs = rows.map((row: any) => ({
-      id: row.id,
-      ...JSON.parse(row.data)
-    }));
-    res.json(docs);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/db/:collection/:id', (req, res) => {
-  const { collection, id } = req.params;
-  try {
-    const stmt = db.prepare('SELECT data FROM documents WHERE collection = ? AND id = ?');
-    const row = stmt.get(collection, id);
-    if (row) {
-      res.json(JSON.parse((row as any).data));
-    } else {
-      res.status(404).json({ error: 'Document not found' });
-    }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/db/:collection', (req, res) => {
-  const { collection } = req.params;
-  const data = req.body;
-  const id = data.id || Math.random().toString(36).substring(2, 15);
-  
-  try {
-    const stmt = db.prepare('INSERT INTO documents (collection, id, data) VALUES (?, ?, ?)');
-    stmt.run(collection, id, JSON.stringify({ ...data, id }));
-    res.json({ id });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/db/:collection/:id', (req, res) => {
-  const { collection, id } = req.params;
-  const data = req.body;
-  
-  try {
-    // Get existing
-    const getStmt = db.prepare('SELECT data FROM documents WHERE collection = ? AND id = ?');
-    const existing = getStmt.get(collection, id);
-    
-    let newData = data;
-    if (existing) {
-      newData = { ...JSON.parse((existing as any).data), ...data };
-      const stmt = db.prepare('UPDATE documents SET data = ? WHERE collection = ? AND id = ?');
-      stmt.run(JSON.stringify(newData), collection, id);
-    } else {
-      const stmt = db.prepare('INSERT INTO documents (collection, id, data) VALUES (?, ?, ?)');
-      stmt.run(collection, id, JSON.stringify({ ...newData, id }));
-    }
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/db/:collection/:id', (req, res) => {
-  const { collection, id } = req.params;
-  try {
-    const stmt = db.prepare('DELETE FROM documents WHERE collection = ? AND id = ?');
-    stmt.run(collection, id);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Auth Routes (Mocking Firebase Auth over SQLite)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS auth_users (
-    uid TEXT PRIMARY KEY,
-    email TEXT UNIQUE,
-    password TEXT,
-    data TEXT
-  )
-`);
-
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  
-  // Super admin hardcoded check
-  if ((email === 'admin@pro.com' || email === 'admin@pro') && password === 'admin123') {
-    const user = { uid: 'super-admin', email: 'admin@pro', role: 'super_admin' };
-    
-    // Ensure super admin exists in documents
-    const getStmt = db.prepare('SELECT * FROM documents WHERE collection = ? AND id = ?');
-    if (!getStmt.get('users', 'super-admin')) {
-      const stmt = db.prepare('INSERT INTO documents (collection, id, data) VALUES (?, ?, ?)');
-      stmt.run('users', 'super-admin', JSON.stringify({
-        id: 'super-admin',
-        uid: 'super-admin',
-        email: 'admin@pro',
-        role: 'super_admin',
-        schoolId: null,
-        fullName: 'Super Admin',
-        phone: '',
-        status: 'active',
-        createdAt: new Date().toISOString()
-      }));
-    }
-    return res.json({ user });
-  }
-
-  try {
-    const stmt = db.prepare('SELECT * FROM auth_users WHERE email = ? AND password = ?');
-    const authUser = stmt.get(email, password) as any;
-    
-    if (authUser) {
-      // Update last login in users collection
-      const userStmt = db.prepare('SELECT data FROM documents WHERE collection = ? AND id = ?');
-      const userDoc = userStmt.get('users', authUser.uid) as any;
-      
-      let userData = {};
-      if (userDoc) {
-        userData = JSON.parse(userDoc.data);
-        (userData as any).lastLogin = new Date().toISOString();
-        const updateStmt = db.prepare('UPDATE documents SET data = ? WHERE collection = ? AND id = ?');
-        updateStmt.run(JSON.stringify(userData), 'users', authUser.uid);
-      }
-      
-      res.json({ user: { ...JSON.parse(authUser.data), ...userData } });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
-    }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/auth/register', (req, res) => {
-  const { email, password, uid: providedUid } = req.body;
-  const uid = providedUid || Math.random().toString(36).substring(2, 15);
-  
-  try {
-    const stmt = db.prepare('INSERT INTO auth_users (uid, email, password, data) VALUES (?, ?, ?, ?)');
-    stmt.run(uid, email, password, JSON.stringify({ uid, email }));
-    res.json({ user: { uid, email } });
-  } catch (error: any) {
-    if (error.message.includes('UNIQUE constraint failed')) {
-      res.status(400).json({ error: 'Email already in use' });
-    } else {
-      res.status(500).json({ error: error.message });
-    }
-  }
-});
-
-app.post('/api/auth/update-password', (req, res) => {
-  const { email, oldPassword, newPassword } = req.body;
-  try {
-    const stmt = db.prepare('UPDATE auth_users SET password = ? WHERE email = ? AND password = ?');
-    const result = stmt.run(newPassword, email, oldPassword);
-    if (result.changes > 0) {
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: 'Invalid credentials' });
-    }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-school-system';
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json());
+  app.use(cors());
+
+  // Initialize SQLite Database
+  const db = await open({
+    filename: path.join(__dirname, 'database.sqlite'),
+    driver: sqlite3.Database
+  });
+
+  // Create tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL,
+      school_id TEXT,
+      full_name TEXT NOT NULL,
+      phone TEXT,
+      status TEXT DEFAULT 'active',
+      last_login DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS schools (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE NOT NULL,
+      address TEXT,
+      email TEXT,
+      principal_name TEXT,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS learners (
+      id TEXT PRIMARY KEY,
+      admission_number TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      dob TEXT,
+      date_of_admission TEXT,
+      assessment_number TEXT,
+      grade TEXT,
+      stream TEXT,
+      school_id TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS fees (
+      id TEXT PRIMARY KEY,
+      learner_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      date TEXT NOT NULL,
+      term TEXT,
+      year TEXT,
+      receipt_number TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS attendance (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      time_in TEXT,
+      time_out TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Bootstrap Super Admin
+  const adminEmail = 'admin@pro.com';
+  const existingAdmin = await db.get('SELECT * FROM users WHERE email = ?', adminEmail);
+  if (!existingAdmin) {
+    const hash = await bcrypt.hash('admin123', 10);
+    await db.run(
+      'INSERT INTO users (id, email, password_hash, role, full_name, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [crypto.randomUUID(), adminEmail, hash, 'super_admin', 'Super Admin', 'active']
+    );
+    console.log('Bootstrapped super admin: admin@pro.com / admin123');
+  }
+
+  // Authentication Middleware
+  const authenticateToken = (req: any, res: any, next: any) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token == null) return res.sendStatus(401);
+
+    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+      if (err) return res.sendStatus(403);
+      req.user = user;
+      next();
+    });
+  };
+
+  // --- API ROUTES ---
+
+  // Login
+  app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+      const user = await db.get('SELECT * FROM users WHERE email = ?', email);
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid email or password' });
+      }
+
+      const validPassword = await bcrypt.compare(password, user.password_hash);
+      if (!validPassword) {
+        return res.status(400).json({ error: 'Invalid email or password' });
+      }
+
+      // Update last login
+      await db.run('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', user.id);
+
+      const token = jwt.sign({ id: user.id, email: user.email, role: user.role, schoolId: user.school_id }, JWT_SECRET, { expiresIn: '24h' });
+      
+      res.json({
+        token,
+        user: {
+          uid: user.id,
+          email: user.email,
+          role: user.role,
+          schoolId: user.school_id,
+          fullName: user.full_name
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Get current user
+  app.get('/api/auth/me', authenticateToken, async (req: any, res: any) => {
+    try {
+      const user = await db.get('SELECT id, email, role, school_id, full_name FROM users WHERE id = ?', req.user.id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      
+      res.json({
+        uid: user.id,
+        email: user.email,
+        role: user.role,
+        schoolId: user.school_id,
+        fullName: user.full_name
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // --- SUPER ADMIN ROUTES ---
+
+  // Get all schools
+  app.get('/api/schools', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    const schools = await db.all('SELECT * FROM schools');
+    res.json(schools);
+  });
+
+  // Create school
+  app.post('/api/schools', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    const { name, code, address, email, principalName, status } = req.body;
+    
+    try {
+      const schoolId = crypto.randomUUID();
+      await db.run(
+        'INSERT INTO schools (id, name, code, address, email, principal_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [schoolId, name, code, address, email, principalName, status || 'active']
+      );
+
+      // Auto-generate school admin
+      const adminEmail = \`admin@\${code.toLowerCase().replace(/\\s+/g, '')}.com\`;
+      const adminPassword = Math.random().toString(36).slice(-8);
+      const hash = await bcrypt.hash(adminPassword, 10);
+      const adminId = crypto.randomUUID();
+
+      await db.run(
+        'INSERT INTO users (id, email, password_hash, role, school_id, full_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [adminId, adminEmail, hash, 'school_admin', schoolId, \`\${name} Admin\`, 'active']
+      );
+
+      res.json({ schoolId, adminEmail, adminPassword });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update school
+  app.put('/api/schools/:id', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    const { name, code, address, email, principalName, status } = req.body;
+    await db.run(
+      'UPDATE schools SET name = ?, code = ?, address = ?, email = ?, principal_name = ?, status = ? WHERE id = ?',
+      [name, code, address, email, principalName, status, req.params.id]
+    );
+    res.json({ success: true });
+  });
+
+  // Delete school
+  app.delete('/api/schools/:id', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    await db.run('DELETE FROM schools WHERE id = ?', req.params.id);
+    await db.run('DELETE FROM users WHERE school_id = ?', req.params.id);
+    res.json({ success: true });
+  });
+
+  // Get super admins and school admins
+  app.get('/api/users', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    const users = await db.all('SELECT id, email, role, school_id, full_name, status, last_login FROM users WHERE role IN ("super_admin", "school_admin")');
+    res.json(users);
+  });
+
+  // Create super admin
+  app.post('/api/users', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    const { email, fullName, role } = req.body;
+    try {
+      const password = Math.random().toString(36).slice(-8);
+      const hash = await bcrypt.hash(password, 10);
+      const userId = crypto.randomUUID();
+
+      await db.run(
+        'INSERT INTO users (id, email, password_hash, role, full_name, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, email, hash, role || 'super_admin', fullName, 'active']
+      );
+      res.json({ email, password });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Delete user
+  app.delete('/api/users/:id', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin') return res.sendStatus(403);
+    await db.run('DELETE FROM users WHERE id = ?', req.params.id);
+    res.json({ success: true });
+  });
+
+  // --- SCHOOL ADMIN ROUTES ---
+
+  // Get school users (staff)
+  app.get('/api/school/users', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const users = await db.all('SELECT id, email, role, full_name, phone, status, last_login FROM users WHERE school_id = ? AND role IN ("teacher", "parent", "staff")', req.user.schoolId);
+    res.json(users);
+  });
+
+  // Create school user
+  app.post('/api/school/users', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const { email, fullName, role, phone } = req.body;
+    try {
+      const password = Math.random().toString(36).slice(-8);
+      const hash = await bcrypt.hash(password, 10);
+      const userId = crypto.randomUUID();
+
+      await db.run(
+        'INSERT INTO users (id, email, password_hash, role, school_id, full_name, phone, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [userId, email, hash, role, req.user.schoolId, fullName, phone, 'active']
+      );
+      res.json({ email, password });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get learners
+  app.get('/api/school/learners', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const learners = await db.all('SELECT * FROM learners WHERE school_id = ?', req.user.schoolId);
+    res.json(learners);
+  });
+
+  // Create learner
+  app.post('/api/school/learners', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const { admissionNumber, fullName, dob, dateOfAdmission, assessmentNumber, grade, stream } = req.body;
+    try {
+      const learnerId = crypto.randomUUID();
+      await db.run(
+        'INSERT INTO learners (id, admission_number, full_name, dob, date_of_admission, assessment_number, grade, stream, school_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [learnerId, admissionNumber, fullName, dob, dateOfAdmission, assessmentNumber, grade, stream, req.user.schoolId, 'active']
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update learner
+  app.put('/api/school/learners/:id', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const { admissionNumber, fullName, dob, dateOfAdmission, assessmentNumber, grade, stream } = req.body;
+    await db.run(
+      'UPDATE learners SET admission_number = ?, full_name = ?, dob = ?, date_of_admission = ?, assessment_number = ?, grade = ?, stream = ? WHERE id = ? AND school_id = ?',
+      [admissionNumber, fullName, dob, dateOfAdmission, assessmentNumber, grade, stream, req.params.id, req.user.schoolId]
+    );
+    res.json({ success: true });
+  });
+
+  // Delete learner
+  app.delete('/api/school/learners/:id', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    await db.run('DELETE FROM learners WHERE id = ? AND school_id = ?', [req.params.id, req.user.schoolId]);
+    res.json({ success: true });
+  });
+
+  // Bulk create learners (CSV)
+  app.post('/api/school/learners/bulk', authenticateToken, async (req: any, res: any) => {
+    if (!req.user.schoolId) return res.sendStatus(403);
+    const { learners } = req.body;
+    
+    try {
+      await db.run('BEGIN TRANSACTION');
+      const stmt = await db.prepare('INSERT INTO learners (id, admission_number, full_name, dob, date_of_admission, assessment_number, grade, stream, school_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      
+      for (const learner of learners) {
+        await stmt.run([
+          crypto.randomUUID(),
+          learner.admissionNumber,
+          learner.fullName,
+          learner.dob,
+          learner.dateOfAdmission,
+          learner.assessmentNumber,
+          learner.grade,
+          learner.stream,
+          req.user.schoolId,
+          'active'
+        ]);
+      }
+      await stmt.finalize();
+      await db.run('COMMIT');
+      res.json({ success: true });
+    } catch (error: any) {
+      await db.run('ROLLBACK');
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'spa',
+      appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
@@ -218,8 +375,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(\`Server running on http://localhost:\${PORT}\`);
   });
 }
 

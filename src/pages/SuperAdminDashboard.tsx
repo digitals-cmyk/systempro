@@ -1,28 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, CheckCircle2, XCircle } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../firebase';
 
 export function SuperAdminDashboard() {
   const [stats, setStats] = useState({ totalSchools: 0, activeSchools: 0, inactiveSchools: 0 });
 
   const fetchStats = async () => {
     try {
-      const schoolsSnapshot = await getDocs(collection(db, 'schools'));
-      let total = 0;
-      let active = 0;
-      let inactive = 0;
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/schools', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const schools = await res.json();
+        let total = 0;
+        let active = 0;
+        let inactive = 0;
 
-      schoolsSnapshot.forEach((doc) => {
-        total++;
-        if (doc.data().status === 'active') {
-          active++;
-        } else {
-          inactive++;
-        }
-      });
+        schools.forEach((school: any) => {
+          total++;
+          if (school.status === 'active') {
+            active++;
+          } else {
+            inactive++;
+          }
+        });
 
-      setStats({ totalSchools: total, activeSchools: active, inactiveSchools: inactive });
+        setStats({ totalSchools: total, activeSchools: active, inactiveSchools: inactive });
+      }
     } catch (error) {
       console.error("Error fetching stats:", error);
     }

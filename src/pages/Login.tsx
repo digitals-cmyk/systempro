@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { School } from 'lucide-react';
-import { auth, db } from '../firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  sendPasswordResetEmail,
-  updatePassword
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../lib/AuthContext';
 
 export function Login() {
@@ -23,7 +15,7 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -42,82 +34,24 @@ export function Login() {
     setLoading(true);
 
     try {
-      // Handle special super admin login
-      let loginEmail = email;
-      if (email === 'admin@pro' || email === 'admin@pro.com') {
-        loginEmail = 'admin@pro.com'; // Firebase requires a valid email format
-      }
-
       if (mode === 'login') {
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, loginEmail, password);
-          // Check if it's the super admin and ensure their Firestore document exists
-          if (loginEmail === 'admin@pro.com') {
-            const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-            if (!userDoc.exists()) {
-              await setDoc(doc(db, 'users', userCredential.user.uid), {
-                uid: userCredential.user.uid,
-                email: loginEmail,
-                role: 'super_admin',
-                schoolId: null,
-                fullName: 'Super Admin',
-                phone: '',
-                status: 'active',
-                createdAt: new Date().toISOString()
-              });
-            }
-          }
-        } catch (loginError: any) {
-          // If the special super admin doesn't exist yet, bootstrap it
-          if ((email === 'admin@pro' || email === 'admin@pro.com') && password === 'admin123' && (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential' || loginError.code === 'auth/invalid-login-credentials')) {
-            try {
-              const result = await createUserWithEmailAndPassword(auth, loginEmail, password);
-              await setDoc(doc(db, 'users', result.user.uid), {
-                uid: result.user.uid,
-                email: loginEmail,
-                role: 'super_admin',
-                schoolId: null,
-                fullName: 'Super Admin',
-                phone: '',
-                status: 'active',
-                createdAt: new Date().toISOString()
-              });
-            } catch (createError: any) {
-              if (createError.code === 'auth/email-already-in-use') {
-                throw new Error('Invalid credentials'); // It exists but wrong password
-              }
-              throw createError;
-            }
-          } else {
-            throw loginError;
-          }
-        }
-        // The onAuthStateChanged listener in AuthContext will handle the redirect
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        
+        login(data.token, data.user);
       } else if (mode === 'activate') {
-        // To activate, they must first sign in with the temporary credentials (activation code)
-        try {
-          const result = await signInWithEmailAndPassword(auth, email, activationCode);
-          
-          if (result.user) {
-            await updatePassword(result.user, newPassword);
-            setMessage('Account activated successfully!');
-            setMode('login');
-          }
-        } catch (err: any) {
-          throw new Error('Invalid activation code or email.');
-        }
+        setError('Activation is not yet implemented in SQL version.');
       } else if (mode === 'forgot_password') {
-        await sendPasswordResetEmail(auth, email);
-        setMessage('Password reset email sent! Check your inbox.');
-        setMode('login');
+        setError('Password reset is not yet implemented in SQL version.');
       }
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('Invalid email or password. Please try again.');
-      } else {
-        setError(err.message || 'Authentication failed');
-      }
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }

@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Plus, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { createAuthUser } from '../lib/secondaryAuth';
 
 export function SuperAdminSchools() {
   const [schools, setSchools] = useState<any[]>([]);
@@ -15,16 +12,17 @@ export function SuperAdminSchools() {
 
   const fetchSchools = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'schools'));
-      const schoolsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSchools(schoolsData);
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/schools', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        setSchools(await res.json());
+      }
       
-      // Fetch school admins to show last login
-      const adminsSnapshot = await getDocs(collection(db, 'users'));
-      const adminsData = adminsSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((u: any) => u.role === 'school_admin');
-      setSchoolAdmins(adminsData);
+      const usersRes = await fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (usersRes.ok) {
+        const users = await usersRes.json();
+        setSchoolAdmins(users.filter((u: any) => u.role === 'school_admin'));
+      }
     } catch (error) {
       console.error("Error fetching schools:", error);
     }
@@ -39,70 +37,35 @@ export function SuperAdminSchools() {
     setLoading(true);
     
     try {
+      const token = localStorage.getItem('token');
       if (editingSchool) {
-        const schoolRef = doc(db, 'schools', editingSchool.id);
-        await updateDoc(schoolRef, newSchool);
+        const res = await fetch(`/api/schools/${editingSchool.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newSchool)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        
         setShowAddModal(false);
         setEditingSchool(null);
         fetchSchools();
         setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
       } else {
-        let docRef;
-        try {
-          docRef = await addDoc(collection(db, 'schools'), {
-            ...newSchool,
-            createdAt: new Date().toISOString()
-          });
+        const res = await fetch('/api/schools', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(newSchool)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create school');
 
-          // Auto-generate school admin credentials
-          let adminUsername = `admin@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
-          
-          // Create user in Firebase Auth using secondary app
-          let uid, password;
-          try {
-            const result = await createAuthUser(adminUsername);
-            uid = result.uid;
-            password = result.password;
-          } catch (e: any) {
-            if (e.code === 'auth/email-already-in-use') {
-               adminUsername = `admin${Math.floor(Math.random() * 10000)}@${newSchool.code.toLowerCase().replace(/\s+/g, '')}.com`;
-               const result = await createAuthUser(adminUsername);
-               uid = result.uid;
-               password = result.password;
-            } else {
-               throw e;
-            }
-          }
-
-          // Save user to Firestore
-          await setDoc(doc(db, 'users', uid), {
-            uid: uid,
-            email: adminUsername,
-            role: 'school_admin',
-            schoolId: docRef.id,
-            fullName: `${newSchool.name} Admin`,
-            phone: '',
-            status: 'active',
-            createdAt: new Date().toISOString()
-          });
-
-          setCreatedCredentials({ adminUsername, adminPassword: password, schoolId: docRef.id });
-          fetchSchools();
-          setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
-        } catch (error: any) {
-          if (docRef) {
-            await deleteDoc(docRef).catch(console.error); // Rollback school creation
-          }
-          throw error;
-        }
+        setCreatedCredentials({ adminUsername: data.adminEmail, adminPassword: data.adminPassword, schoolId: data.schoolId });
+        fetchSchools();
+        setNewSchool({ name: '', code: '', address: '', email: '', principalName: '', status: 'active' });
       }
     } catch (error: any) {
       console.error("Error saving school:", error);
-      if (error.code === 'auth/operation-not-allowed') {
-        alert("Failed to create user: Email/Password authentication is not enabled in your Firebase project. Please enable it in the Firebase Console under Authentication > Sign-in method.");
-      } else {
-        alert(`Failed to save school: ${error.message || 'Unknown error'}`);
-      }
+      alert(`Failed to save school: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -111,7 +74,12 @@ export function SuperAdminSchools() {
   const handleDeleteSchool = async (id: string) => {
     if (!confirm('Are you sure you want to delete this school? All associated data will be lost.')) return;
     try {
-      await deleteDoc(doc(db, 'schools', id));
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/schools/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete');
       fetchSchools();
     } catch (error) {
       console.error("Error deleting school:", error);
@@ -126,7 +94,7 @@ export function SuperAdminSchools() {
       code: school.code,
       address: school.address || '',
       email: school.email || '',
-      principalName: school.principalName || '',
+      principalName: school.principal_name || school.principalName || '',
       status: school.status
     });
     setShowAddModal(true);
@@ -163,19 +131,19 @@ export function SuperAdminSchools() {
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {schools.map((school) => {
-                const admin = schoolAdmins.find(a => a.schoolId === school.id);
+                const admin = schoolAdmins.find(a => a.school_id === school.id);
                 return (
                 <tr key={school.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{school.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.principalName}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{school.principal_name || school.principalName}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${school.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                       {school.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                    {admin?.lastLogin ? new Date(admin.lastLogin).toLocaleString() : 'Never'}
+                    {admin?.last_login ? new Date(admin.last_login).toLocaleString() : 'Never'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onClick={() => openEditSchool(school)} className="text-blue-600 hover:text-blue-900 mr-3">

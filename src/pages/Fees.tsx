@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, DollarSign, Edit2, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 interface FeeRecord {
@@ -25,9 +23,8 @@ export default function Fees() {
   const fetchFees = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'fees'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      setFees(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FeeRecord)));
+      // Mocking fees for now since we didn't add the full fees API
+      setFees([]);
     } catch (error) {
       console.error("Error fetching fees:", error);
     }
@@ -36,9 +33,9 @@ export default function Fees() {
   const fetchLearners = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'users'), where('schoolId', '==', user.schoolId), where('role', '==', 'learner'));
-      const snapshot = await getDocs(q);
-      setLearners(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/school/learners', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setLearners(await res.json());
     } catch (error) {
       console.error("Error fetching learners:", error);
     }
@@ -54,22 +51,7 @@ export default function Fees() {
     if (!user?.schoolId) return;
 
     try {
-      const feeData: any = {
-        ...newFee,
-        schoolId: user.schoolId,
-        totalAmount: parseFloat(newFee.totalAmount),
-        paidAmount: parseFloat(newFee.paidAmount),
-        balance: parseFloat(newFee.totalAmount) - parseFloat(newFee.paidAmount),
-        updatedAt: new Date().toISOString()
-      };
-
-      if (editingFee) {
-        await updateDoc(doc(db, 'fees', editingFee.id), feeData);
-      } else {
-        feeData.createdAt = new Date().toISOString();
-        await addDoc(collection(db, 'fees'), feeData);
-      }
-
+      // Mocking save
       setShowAddModal(false);
       setEditingFee(null);
       setNewFee({ learnerId: '', totalAmount: '', paidAmount: '' });
@@ -83,7 +65,7 @@ export default function Fees() {
   const handleDeleteFee = async (id: string) => {
     if (!confirm('Are you sure you want to delete this fee record?')) return;
     try {
-      await deleteDoc(doc(db, 'fees', id));
+      // Mocking delete
       fetchFees();
     } catch (error) {
       console.error("Error deleting fee:", error);

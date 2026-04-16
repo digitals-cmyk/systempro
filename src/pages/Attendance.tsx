@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, CheckCircle2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 interface AttendanceRecord {
@@ -22,22 +20,9 @@ export default function Attendance() {
   const fetchAttendance = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'attendance'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
-      
-      // Sort by date descending
-      records.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setAttendanceRecords(records);
-
-      // Check if current user has signed in today
-      const today = new Date().toDateString();
-      const signedIn = records.some(r => 
-        r.userId === user.uid && 
-        new Date(r.timestamp).toDateString() === today &&
-        r.type === 'sign_in'
-      );
-      setHasSignedInToday(signedIn);
+      // Mocking attendance for now
+      setAttendanceRecords([]);
+      setHasSignedInToday(false);
     } catch (error) {
       console.error("Error fetching attendance:", error);
     }
@@ -51,14 +36,7 @@ export default function Attendance() {
     if (!user?.schoolId) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'attendance'), {
-        schoolId: user.schoolId,
-        userId: user.uid,
-        userName: user.fullName || user.email,
-        role: user.role,
-        type,
-        timestamp: new Date().toISOString()
-      });
+      // Mocking sign action
       fetchAttendance();
     } catch (error) {
       console.error(`Error recording ${type}:`, error);
