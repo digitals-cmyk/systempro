@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { Settings, User, Save } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 
 export function SuperAdminSettings() {
   const { user } = useAuth();
@@ -17,13 +15,20 @@ export function SuperAdminSettings() {
     setLoading(true);
     setMessage('');
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        fullName,
-        email
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/users/${user.uid}`, { // Using super admin user endpoint
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ fullName, email })
       });
+
+      if (!res.ok) {
+         throw new Error("Failed");
+      }
       
-      // Update local storage auth user
       const authUser = JSON.parse(localStorage.getItem('authUser') || '{}');
       authUser.fullName = fullName;
       authUser.email = email;

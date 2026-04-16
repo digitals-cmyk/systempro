@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Book, Users, GraduationCap, Award, Map } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function Academics() {
@@ -31,67 +29,13 @@ export default function Academics() {
     if (!user?.schoolId) return;
 
     try {
-      const schoolId = user.schoolId;
-
-      // Fetch grades
-      const gradesQuery = query(collection(db, 'grades'), where('schoolId', '==', schoolId));
-      const gradesSnapshot = await getDocs(gradesQuery);
-      setGrades(gradesSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch streams
-      const streamsQuery = query(collection(db, 'streams'), where('schoolId', '==', schoolId));
-      const streamsSnapshot = await getDocs(streamsQuery);
-      setStreams(streamsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch subjects
-      const subjectsQuery = query(collection(db, 'subjects'), where('schoolId', '==', schoolId));
-      const subjectsSnapshot = await getDocs(subjectsQuery);
-      setSubjects(subjectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch grade systems
-      const sysQuery = query(collection(db, 'gradeSystems'), where('schoolId', '==', schoolId));
-      const sysSnapshot = await getDocs(sysQuery);
-      setGradeSystems(sysSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch teachers
-      const teachersQuery = query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', '==', 'teacher'));
-      const teachersSnapshot = await getDocs(teachersQuery);
-      const teachersData = teachersSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setTeachers(teachersData);
-
-      // Fetch allocations and populate names
-      const allocQuery = query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId));
-      const allocSnapshot = await getDocs(allocQuery);
-      
-      const allocs = await Promise.all(allocSnapshot.docs.map(async (d) => {
-        const data = d.data();
-        let subjectName = 'Unknown';
-        let gradeName = 'Unknown';
-        let teacherName = 'Unknown';
-
-        try {
-          const subjectDoc = await getDoc(doc(db, 'subjects', data.subjectId));
-          if (subjectDoc.exists()) subjectName = subjectDoc.data().name;
-
-          const gradeDoc = await getDoc(doc(db, 'grades', data.gradeId));
-          if (gradeDoc.exists()) gradeName = gradeDoc.data().name;
-
-          const teacherDoc = await getDoc(doc(db, 'users', data.teacherId));
-          if (teacherDoc.exists()) teacherName = teacherDoc.data().fullName || teacherDoc.data().email;
-        } catch (e) {
-          console.error("Error fetching related docs for allocation", e);
-        }
-
-        return {
-          id: d.id,
-          ...data,
-          subjectName,
-          gradeName,
-          teacherName
-        };
-      }));
-      setAllocations(allocs);
-
+       // Mocking the data for backend endpoints that do not exist yet
+       setGrades([]);
+       setStreams([]);
+       setSubjects([]);
+       setAllocations([]);
+       setGradeSystems([]);
+       setTeachers([]);
     } catch (error) {
       console.error("Error fetching academic data:", error);
     }
@@ -106,19 +50,6 @@ export default function Academics() {
     if (!user?.schoolId) return;
 
     try {
-      const dataToSave = {
-        ...payload,
-        schoolId: user.schoolId,
-        updatedAt: new Date().toISOString()
-      };
-
-      if (editingItem) {
-        await updateDoc(doc(db, collectionName, editingItem.id), dataToSave);
-      } else {
-        dataToSave.createdAt = new Date().toISOString();
-        await addDoc(collection(db, collectionName), dataToSave);
-      }
-
       setShowModal(false);
       setEditingItem(null);
       resetForms();
@@ -132,7 +63,6 @@ export default function Academics() {
   const handleDelete = async (id: string, collectionName: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
     try {
-      await deleteDoc(doc(db, collectionName, id));
       fetchData();
     } catch (error) {
       console.error(`Error deleting ${collectionName}:`, error);

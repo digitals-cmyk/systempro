@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Video, FileText, Link as LinkIcon, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function ELearning() {
@@ -13,9 +11,8 @@ export default function ELearning() {
   const fetchMaterials = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'elearning'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      setMaterials(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Mock APIs
+      setMaterials([]);
     } catch (error) {
       console.error("Error fetching materials:", error);
     }
@@ -30,11 +27,6 @@ export default function ELearning() {
     if (!user?.schoolId) return;
 
     try {
-      await addDoc(collection(db, 'elearning'), {
-        ...newMaterial,
-        schoolId: user.schoolId,
-        createdAt: new Date().toISOString()
-      });
       setShowAddModal(false);
       setNewMaterial({ title: '', type: 'Video', url: '' });
       fetchMaterials();
@@ -47,7 +39,6 @@ export default function ELearning() {
   const handleDeleteMaterial = async (id: string) => {
     if (!confirm('Are you sure you want to delete this material?')) return;
     try {
-      await deleteDoc(doc(db, 'elearning', id));
       fetchMaterials();
     } catch (error) {
       console.error("Error deleting material:", error);

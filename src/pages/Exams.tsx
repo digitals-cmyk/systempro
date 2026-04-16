@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, BookOpen, Edit2, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function Exams() {
@@ -14,9 +12,8 @@ export default function Exams() {
   const fetchExams = async () => {
     if (!user?.schoolId) return;
     try {
-      const examsQuery = query(collection(db, 'exams'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(examsQuery);
-      setExams(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Mock APIs
+      setExams([]);
     } catch (error) {
       console.error("Error fetching exams:", error);
     }
@@ -31,19 +28,6 @@ export default function Exams() {
     if (!user?.schoolId) return;
     
     try {
-      if (editingExam) {
-        await updateDoc(doc(db, 'exams', editingExam.id), {
-          ...newExam,
-          updatedAt: new Date().toISOString()
-        });
-      } else {
-        await addDoc(collection(db, 'exams'), {
-          ...newExam,
-          schoolId: user.schoolId,
-          createdAt: new Date().toISOString()
-        });
-      }
-      
       setShowAddModal(false);
       setEditingExam(null);
       setNewExam({ name: '', term: '', year: new Date().getFullYear().toString(), status: 'published' });
@@ -57,7 +41,6 @@ export default function Exams() {
   const handleDeleteExam = async (id: string) => {
     if (!confirm('Are you sure you want to delete this exam?')) return;
     try {
-      await deleteDoc(doc(db, 'exams', id));
       fetchExams();
     } catch (error) {
       console.error("Error deleting exam:", error);

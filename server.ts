@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -178,6 +179,17 @@ async function startServer() {
     res.json(schools);
   });
 
+  // Get single school
+  app.get('/api/schools/:id', authenticateToken, async (req: any, res: any) => {
+    // Both super_admin and school users should be able to get school info
+    if (req.user.role !== 'super_admin' && req.user.schoolId !== req.params.id) {
+       return res.sendStatus(403);
+    }
+    const school = await db.get('SELECT * FROM schools WHERE id = ?', req.params.id);
+    if (!school) return res.status(404).json({ error: 'School not found' });
+    res.json(school);
+  });
+
   // Create school
   app.post('/api/schools', authenticateToken, async (req: any, res: any) => {
     if (req.user.role !== 'super_admin') return res.sendStatus(403);
@@ -191,14 +203,14 @@ async function startServer() {
       );
 
       // Auto-generate school admin
-      const adminEmail = \`admin@\${code.toLowerCase().replace(/\\s+/g, '')}.com\`;
+      const adminEmail = 'admin@' + code.toLowerCase().replace(/\s+/g, '') + '.com';
       const adminPassword = Math.random().toString(36).slice(-8);
       const hash = await bcrypt.hash(adminPassword, 10);
       const adminId = crypto.randomUUID();
 
       await db.run(
         'INSERT INTO users (id, email, password_hash, role, school_id, full_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [adminId, adminEmail, hash, 'school_admin', schoolId, \`\${name} Admin\`, 'active']
+        [adminId, adminEmail, hash, 'school_admin', schoolId, name + ' Admin', 'active']
       );
 
       res.json({ schoolId, adminEmail, adminPassword });
@@ -257,6 +269,23 @@ async function startServer() {
     if (req.user.role !== 'super_admin') return res.sendStatus(403);
     await db.run('DELETE FROM users WHERE id = ?', req.params.id);
     res.json({ success: true });
+  });
+
+  // Update user
+  app.put('/api/users/:id', authenticateToken, async (req: any, res: any) => {
+    if (req.user.role !== 'super_admin' && req.user.id !== req.params.id) return res.sendStatus(403);
+    const { fullName, email, password } = req.body;
+    try {
+      if (password) {
+        const hash = await bcrypt.hash(password, 10);
+        await db.run('UPDATE users SET full_name = ?, email = ?, password_hash = ? WHERE id = ?', [fullName, email, hash, req.params.id]);
+      } else {
+        await db.run('UPDATE users SET full_name = ?, email = ? WHERE id = ?', [fullName, email, req.params.id]);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
   });
 
   // --- SCHOOL ADMIN ROUTES ---
@@ -376,7 +405,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(\`Server running on http://localhost:\${PORT}\`);
+    console.log('Server running on http://localhost:' + PORT);
   });
 }
 

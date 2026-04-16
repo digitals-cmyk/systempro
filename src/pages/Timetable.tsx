@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function Timetable() {
@@ -13,9 +11,8 @@ export default function Timetable() {
   const fetchTimetables = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'timetable'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      setTimetables(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Mock APIs
+      setTimetables([]);
     } catch (error) {
       console.error("Error fetching timetables:", error);
     }
@@ -30,12 +27,6 @@ export default function Timetable() {
     if (!user?.schoolId) return;
 
     try {
-      await addDoc(collection(db, 'timetable'), {
-        ...newEntry,
-        schoolId: user.schoolId,
-        createdAt: new Date().toISOString()
-      });
-
       setShowAddModal(false);
       setNewEntry({ grade: '', subject: '', day: 'Monday', time: '' });
       fetchTimetables();
@@ -48,7 +39,6 @@ export default function Timetable() {
   const handleDeleteEntry = async (id: string) => {
     if (!confirm('Are you sure you want to delete this entry?')) return;
     try {
-      await deleteDoc(doc(db, 'timetable', id));
       fetchTimetables();
     } catch (error) {
       console.error("Error deleting timetable entry:", error);

@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function Messages() {
@@ -13,12 +11,8 @@ export default function Messages() {
   const fetchMessages = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'messages'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      // Sort in memory since we might not have a composite index yet
-      const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      msgs.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setMessages(msgs);
+      // Mock APIs
+      setMessages([]);
     } catch (error) {
       console.error("Error fetching messages:", error);
     }
@@ -33,14 +27,6 @@ export default function Messages() {
     if (!user?.schoolId) return;
 
     try {
-      await addDoc(collection(db, 'messages'), {
-        ...newMessage,
-        schoolId: user.schoolId,
-        senderId: user.uid,
-        senderName: user.fullName || user.email,
-        createdAt: new Date().toISOString()
-      });
-
       setShowAddModal(false);
       setNewMessage({ recipientGroup: 'All', content: '' });
       fetchMessages();
@@ -53,7 +39,6 @@ export default function Messages() {
   const handleDeleteMessage = async (id: string) => {
     if (!confirm('Are you sure you want to delete this message?')) return;
     try {
-      await deleteDoc(doc(db, 'messages', id));
       fetchMessages();
     } catch (error) {
       console.error("Error deleting message:", error);

@@ -3,8 +3,6 @@ import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut, School, Users, Settings, LayoutDashboard, BookOpen, Clock, MessageSquare, CreditCard, Library, GraduationCap } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../lib/AuthContext';
-import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 import { GlobalSearch } from './GlobalSearch';
 
@@ -28,9 +26,15 @@ export function Layout({ children, allowedRoles }: { children: React.ReactNode, 
     const fetchSchoolName = async () => {
       if (user?.schoolId) {
         try {
-          const schoolDoc = await getDoc(doc(db, 'schools', user.schoolId));
-          if (schoolDoc.exists()) {
-            setSchoolName(schoolDoc.data().name);
+          const token = localStorage.getItem('token');
+          const res = await fetch(`/api/schools/${user.schoolId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+             setSchoolName(data.name);
           }
         } catch (error) {
           console.error("Error fetching school name:", error);
@@ -43,8 +47,10 @@ export function Layout({ children, allowedRoles }: { children: React.ReactNode, 
   if (loading || !user) return null;
 
   const handleLogout = async () => {
-    await auth.signOut();
-    navigate('/login');
+    localStorage.removeItem('token');
+    localStorage.removeItem('authUser');
+    // Using a hard reload to clear all states cleanly
+    window.location.href = '/login';
   };
 
   const superAdminNav = [

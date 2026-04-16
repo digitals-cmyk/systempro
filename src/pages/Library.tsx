@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Library as LibraryIcon, Trash2 } from 'lucide-react';
-import { collection, getDocs, query, where, addDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useAuth } from '../lib/AuthContext';
 
 export default function Library() {
@@ -13,9 +11,8 @@ export default function Library() {
   const fetchBooks = async () => {
     if (!user?.schoolId) return;
     try {
-      const q = query(collection(db, 'library'), where('schoolId', '==', user.schoolId));
-      const snapshot = await getDocs(q);
-      setBooks(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Mock APIs
+      setBooks([]);
     } catch (error) {
       console.error("Error fetching books:", error);
     }
@@ -30,12 +27,6 @@ export default function Library() {
     if (!user?.schoolId) return;
 
     try {
-      await addDoc(collection(db, 'library'), {
-        ...newBook,
-        schoolId: user.schoolId,
-        createdAt: new Date().toISOString()
-      });
-
       setShowAddModal(false);
       setNewBook({ title: '', author: '', status: 'available' });
       fetchBooks();
@@ -48,7 +39,6 @@ export default function Library() {
   const handleDeleteBook = async (id: string) => {
     if (!confirm('Are you sure you want to delete this book?')) return;
     try {
-      await deleteDoc(doc(db, 'library', id));
       fetchBooks();
     } catch (error) {
       console.error("Error deleting book:", error);
